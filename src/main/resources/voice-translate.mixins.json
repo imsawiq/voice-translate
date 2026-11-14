@@ -5,8 +5,10 @@
   "plugin": "org.sawiq.voicetranslate.mixin.VoiceModMixins",
   "compatibilityLevel": "${java}",
   "client": [
+    "PlasmoActivationMixin",
     "PlasmoAddonsTabMixin",
-    "SimpleVoiceChatMenuMixin"
+    "SimpleVoiceChatMenuMixin",
+    "SimpleVoiceChatMicMixin"
   ],
   "injectors": {
     "defaultRequire": 0

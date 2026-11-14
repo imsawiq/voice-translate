@@ -9,6 +9,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -69,8 +70,8 @@ public final class LocalEngine implements AutoCloseable {
     /** A model that failed to download or load is tried again this often while it is still wanted. */
     private static final long MODEL_RETRY_MILLIS = 30_000L;
 
-    private final EngineInstaller installer = new EngineInstaller();
-    private final EngineProcess process = new EngineProcess();
+    private final EngineInstaller installer = new EngineInstaller(EngineComponent.SPEECH);
+    private final EngineProcess process = new EngineProcess(EngineComponent.SPEECH);
     private final ScheduledExecutorService poller;
     private volatile Status status = Status.of(Phase.STOPPED);
     private volatile boolean isWanted;
@@ -204,7 +205,7 @@ public final class LocalEngine implements AutoCloseable {
     private Status startProcess() {
         String model = resolveModel(this.wantedModel);
         try {
-            this.process.start(model, this.wantedDevice);
+            this.process.start(List.of("--model", model, "--device", this.wantedDevice));
             return new Status(Phase.STARTING, -1, model, "", "");
         } catch (IOException exception) {
             this.lastFailureAt = System.currentTimeMillis();

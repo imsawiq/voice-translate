@@ -2,9 +2,11 @@ package org.sawiq.voicetranslate.client;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import net.minecraft.ChatFormatting;
@@ -16,15 +18,25 @@ import org.sawiq.voicetranslate.audio.VoiceIntake;
 import org.sawiq.voicetranslate.caption.Caption;
 import org.sawiq.voicetranslate.caption.CaptionBoard;
 import org.sawiq.voicetranslate.client.compat.ClientAccess;
+import org.sawiq.voicetranslate.client.ui.EngineStatusText;
 import org.sawiq.voicetranslate.client.ui.SettingsScreen;
 import org.sawiq.voicetranslate.config.ConfigStore;
 import org.sawiq.voicetranslate.config.RecognitionService;
 import org.sawiq.voicetranslate.config.TranslateConfig;
 import org.sawiq.voicetranslate.engine.EngineInstaller;
 import org.sawiq.voicetranslate.engine.EnginePaths;
+import org.sawiq.voicetranslate.dub.DubPlayer;
+import org.sawiq.voicetranslate.dub.DubbingService;
+import org.sawiq.voicetranslate.dub.LocalVoiceSynthesizer;
+import org.sawiq.voicetranslate.dub.OwnSpeechTranslator;
+import org.sawiq.voicetranslate.dub.VoiceSamples;
+import org.sawiq.voicetranslate.dub.VoiceSynthesizer;
 import org.sawiq.voicetranslate.engine.LocalEngine;
+import org.sawiq.voicetranslate.engine.VoiceEngine;
 import org.sawiq.voicetranslate.language.SpeakerLanguages;
 import org.sawiq.voicetranslate.net.ServiceException;
+import org.sawiq.voicetranslate.pipeline.FinishedSentence;
+import org.sawiq.voicetranslate.pipeline.PipelineServices;
 import org.sawiq.voicetranslate.pipeline.TranslationPipeline;
 import org.sawiq.voicetranslate.voice.VoiceBridge;
 
@@ -38,6 +50,8 @@ public final class VoiceTranslateClient {
 
     private static final long FAILURE_NOTICE_INTERVAL_MILLIS = 30_000L;
     private static final int PLAYER_REFRESH_TICKS = 10;
+    /** A player whose speech was translated this recently counts as speaking another language. */
+    private static final long FOREIGN_SPEAKER_MILLIS = 120_000L;
 
     private final CaptionBoard captions = new CaptionBoard();
     private final SpeakerLanguages languages = new SpeakerLanguages();
@@ -46,6 +60,15 @@ public final class VoiceTranslateClient {
     private final Queue<Caption> finishedForChat = new ConcurrentLinkedQueue<>();
     /** Other windows showing these settings, such as Plasmo Voice's; told after every change. */
     private final List<Runnable> settingsListeners = new CopyOnWriteArrayList<>();
+    private final VoiceSamples voiceSamples = new VoiceSamples();
+    private final DubPlayer dubPlayer = new DubPlayer();
+    private final Map<UUID, Long> lastTranslatedAt = new ConcurrentHashMap<>();
+    private VoiceEngine voiceEngine;
+    private DubbingService dubbing;
+    private OwnSpeechTranslator ownSpeech;
+    private volatile PipelineServices services;
+    private volatile ServiceException pendingVoiceFailure;
+    private long lastVoiceFailureNoticeAt;
     private ConfigStore store;
     private volatile TranslateConfig config = new TranslateConfig();
     private volatile SegmenterSettings segmenterSettings = SegmenterSettings.DEFAULT;
@@ -70,9 +93,19 @@ public final class VoiceTranslateClient {
         this.keys = keyBindings;
         this.engine = new LocalEngine();
         this.pipeline = new TranslationPipeline(this.captions, this.languages,
-                this::onCaptionFinished, failure -> this.pendingFailure = failure);
+                this::onSentenceFinished, failure -> this.pendingFailure = failure);
         this.intake = new VoiceIntake(this.pipeline, () -> this.segmenterSettings, this::isTranslated);
+        this.voiceEngine = new VoiceEngine();
+        VoiceSynthesizer synthesizer = new LocalVoiceSynthesizer(this.voiceEngine::address);
+        this.dubbing = new DubbingService(synthesizer, this.voiceSamples, this.dubPlayer, this::dubbingSettings,
+                failure -> this.pendingVoiceFailure = failure);
+        this.ownSpeech = new OwnSpeechTranslator(() -> this.services, synthesizer, this.voiceSamples,
+                this.players::self, this::ownSpeechSettings, this.captions::publish,
+                failure -> this.pendingVoiceFailure = failure);
         VoiceBridge.connect(this.intake);
+        VoiceBridge.connectDubbing(this.dubPlayer, this.ownSpeech);
+        VoiceBridge.setOriginalGain(this::originalGain);
+        VoiceBridge.setEntityLookup(this.players::entityOf);
         VoiceTranslate.LOGGER.info("Voice Translate ready; local engine root {}", EnginePaths.root());
     }
 
@@ -86,6 +119,12 @@ public final class VoiceTranslateClient {
         }
         if (this.engine != null) {
             this.engine.close();
+        }
+        if (this.voiceEngine != null) {
+            this.voiceEngine.close();
+            this.dubbing.close();
+            this.ownSpeech.close();
+            this.dubPlayer.close();
         }
     }
 
@@ -101,8 +140,10 @@ public final class VoiceTranslateClient {
             this.lastGameLanguage = gameLanguage;
             applySettings();
         }
+        VoiceBridge.tick();
         handleKeys();
         handleWorldChange(client);
+        reportVoiceFailure();
         postFinishedToChat();
         reportFailure();
         reportInstallOutcome();
@@ -124,7 +165,12 @@ public final class VoiceTranslateClient {
         boolean wantsLocal = current.enabled && current.recognition.service == RecognitionService.LOCAL;
         this.engine.want(wantsLocal, current.recognition.localModel, current.recognition.localDevice);
         this.glossary.request(ServiceFactory.targetLanguage(current, this.lastGameLanguage), this::applySettings);
-        this.pipeline.use(ServiceFactory.create(current, this.engine, this.lastGameLanguage, this.glossary.current()));
+        this.services = ServiceFactory.create(current, this.engine, this.lastGameLanguage, this.glossary.current());
+        this.pipeline.use(this.services);
+        this.voiceEngine.want(current.enabled && current.dubbing.needsVoiceEngine(), current.dubbing.device);
+        if (!current.dubbing.translateMySpeech) {
+            this.ownSpeech.reset();
+        }
         this.store.save(current);
         this.settingsListeners.forEach(Runnable::run);
     }
@@ -203,10 +249,64 @@ public final class VoiceTranslateClient {
         return this.players.isOtherPlayer(speaker) || current.translateOwnVoice && this.players.isSelf(speaker);
     }
 
-    private void onCaptionFinished(Caption caption) {
+    /** Pipeline worker: a sentence of another player is done. */
+    private void onSentenceFinished(FinishedSentence sentence) {
+        Caption caption = sentence.caption();
         if (this.config.display.chatLog) {
             this.finishedForChat.add(caption);
         }
+        this.voiceSamples.offer(caption.speakerId(), sentence.samples());
+        if (caption.isTranslated()) {
+            this.lastTranslatedAt.put(caption.speakerId(), System.currentTimeMillis());
+            this.dubbing.onSentence(caption, sentence.targetLanguage());
+        }
+    }
+
+    /**
+     * How loud a player's own voice plays: lowered while their speech is
+     * dubbed, so the translation is what is heard. Audio threads.
+     */
+    private double originalGain(UUID speaker) {
+        TranslateConfig current = this.config;
+        if (!current.enabled || !current.dubbing.dubOthers || this.voiceEngine.address() == null) {
+            return 1.0;
+        }
+        Long translatedAt = this.lastTranslatedAt.get(speaker);
+        boolean isForeign = translatedAt != null && System.currentTimeMillis() - translatedAt < FOREIGN_SPEAKER_MILLIS;
+        return isForeign ? current.dubbing.originalVolume / 100.0 : 1.0;
+    }
+
+    private DubbingService.Settings dubbingSettings() {
+        TranslateConfig current = this.config;
+        return new DubbingService.Settings(current.enabled && current.dubbing.dubOthers,
+                current.dubbing.cloneVoices, current.dubbing.dubVolume / 100f);
+    }
+
+    private OwnSpeechTranslator.Settings ownSpeechSettings() {
+        TranslateConfig current = this.config;
+        return new OwnSpeechTranslator.Settings(current.enabled && current.dubbing.translateMySpeech,
+                current.dubbing.mySpeechLanguage, current.dubbing.dubVolume / 100f);
+    }
+
+    public VoiceEngine voiceEngine() {
+        return this.voiceEngine;
+    }
+
+    /** Tells the player, at most every half minute, that speaking translations fails and why. */
+    private void reportVoiceFailure() {
+        ServiceException failure = this.pendingVoiceFailure;
+        if (failure == null) {
+            return;
+        }
+        this.pendingVoiceFailure = null;
+        long now = System.currentTimeMillis();
+        if (now - this.lastVoiceFailureNoticeAt < FAILURE_NOTICE_INTERVAL_MILLIS) {
+            return;
+        }
+        this.lastVoiceFailureNoticeAt = now;
+        VoiceTranslate.LOGGER.warn("Speaking a translation failed: {}", failure.getMessage());
+        ClientAccess.actionBar(Component.translatable("voice-translate.failure.voice",
+                Component.translatable(FailureText.keyFor(failure.kind()))).withStyle(ChatFormatting.RED));
     }
 
     private void handleKeys() {
@@ -215,6 +315,12 @@ public final class VoiceTranslateClient {
         }
         while (this.keys.openHistory().consumeClick()) {
             ClientAccess.openScreen(new SettingsScreen(ClientAccess.currentScreen(), SettingsScreen.Page.HISTORY));
+        }
+        while (this.keys.toggleMySpeech().consumeClick()) {
+            this.config.dubbing.translateMySpeech = !this.config.dubbing.translateMySpeech;
+            applySettings();
+            ClientAccess.actionBar(Component.translatable(this.config.dubbing.translateMySpeech
+                    ? "voice-translate.my_speech.on" : "voice-translate.my_speech.off"));
         }
         while (this.keys.toggle().consumeClick()) {
             setEnabled(!this.config.enabled);
@@ -231,6 +337,10 @@ public final class VoiceTranslateClient {
         }
         if (!isInWorld && this.wasInWorld) {
             this.intake.clear();
+            this.ownSpeech.reset();
+            this.dubPlayer.clear();
+            this.voiceSamples.clear();
+            this.lastTranslatedAt.clear();
             this.captions.clearActive();
             this.languages.clear();
         }
@@ -273,11 +383,16 @@ public final class VoiceTranslateClient {
     }
 
     private void reportInstallOutcome() {
-        EngineInstaller.Progress outcome = this.engine.installer().takeOutcome();
+        reportInstallOutcome(this.engine.installer());
+        reportInstallOutcome(this.voiceEngine.installer());
+    }
+
+    private static void reportInstallOutcome(EngineInstaller installer) {
+        EngineInstaller.Progress outcome = installer.takeOutcome();
         if (outcome == null) {
             return;
         }
-        ClientAccess.chat(Component.translatable(outcome.state() == EngineInstaller.State.INSTALLED
-                ? "voice-translate.engine.installed_chat" : "voice-translate.engine.failed_chat"));
+        ClientAccess.chat(Component.translatable(EngineStatusText.key(installer.component(),
+                outcome.state() == EngineInstaller.State.INSTALLED ? "installed_chat" : "failed_chat")));
     }
 }

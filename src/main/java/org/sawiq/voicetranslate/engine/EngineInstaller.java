@@ -16,6 +16,7 @@ import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
@@ -27,14 +28,14 @@ import org.sawiq.voicetranslate.VoiceTranslate;
 import org.sawiq.voicetranslate.net.Http;
 
 /**
- * Installs the local speech engine after the player agreed to it, and
+ * Installs one part of the local engine after the player agreed to it, and
  * removes it again.
  *
  * <p>Nothing is installed system-wide. uv, a single program, is downloaded
- * into the engine folder and fetches Python and the engine's packages into
- * that same folder. uv itself is checked against a hash built into the mod,
- * and the engine script ships inside the mod jar, so nothing runs that the
- * mod did not bring or verify.</p>
+ * into the engine folder and fetches Python and the packages into that same
+ * folder. uv is checked against a hash built into the mod, and the engine
+ * scripts ship inside the mod jar, so nothing runs that the mod did not bring
+ * or verify.</p>
  */
 public final class EngineInstaller {
     public enum State {
@@ -61,21 +62,29 @@ public final class EngineInstaller {
 
     private static final int MAX_DETAIL_LENGTH = 140;
     private static final String RESOURCE_FOLDER = "/voice-translate-engine/";
-    private static final List<String> BUNDLED_FILES = List.of("vt_engine.py", "requirements-cuda.txt", "requirements-cpu.txt");
+    private static final List<String> BUNDLED_FILES = List.of(
+            "vt_engine.py", "requirements-cuda.txt", "requirements-cpu.txt",
+            "vt_voice.py", "requirements-voice-cuda.txt", "requirements-voice-cpu.txt");
 
+    private final EngineComponent component;
     private volatile Progress progress;
     private volatile Progress outcome;
     private volatile PackageSet packageSet;
     private volatile Process child;
     private volatile boolean isCancelled;
 
-    public EngineInstaller() {
+    public EngineInstaller(EngineComponent component) {
+        this.component = component;
         this.progress = idle();
         if (EnginePaths.isSupported()) {
             Thread detection = new Thread(() -> this.packageSet = PackageSet.detect(), "Voice Translate GPU detection");
             detection.setDaemon(true);
             detection.start();
         }
+    }
+
+    public EngineComponent component() {
+        return this.component;
     }
 
     public Progress progress() {
@@ -112,31 +121,28 @@ public final class EngineInstaller {
         }
         try {
             Files.createDirectories(EnginePaths.root());
-            Files.writeString(EnginePaths.pendingInstallMarker(), EnginePaths.ENGINE_VERSION, StandardCharsets.UTF_8);
+            Files.writeString(this.component.pendingInstallMarker(), this.component.version(), StandardCharsets.UTF_8);
         } catch (IOException exception) {
             VoiceTranslate.LOGGER.warn("Could not note the engine install for the next start", exception);
         }
         this.isCancelled = false;
         this.progress = new Progress(State.INSTALLING, "download_uv", -1, "");
-        Thread worker = new Thread(this::runInstall, "Voice Translate engine install");
+        Thread worker = new Thread(this::runInstall, "Voice Translate " + this.component.name().toLowerCase() + " install");
         worker.setDaemon(true);
         worker.start();
     }
 
     /** Carries on with an install that the game was closed during. */
     public void resumeInterruptedInstall() {
-        if (EnginePaths.isSupported() && Files.isRegularFile(EnginePaths.pendingInstallMarker()) && !isInstalled()) {
-            VoiceTranslate.LOGGER.info("Carrying on with the speech engine install from the last session");
+        if (EnginePaths.isSupported() && Files.isRegularFile(this.component.pendingInstallMarker()) && !isInstalled()) {
+            VoiceTranslate.LOGGER.info("Carrying on with the {} engine install from the last session", this.component);
             install();
         }
     }
 
-    /**
-     * Brings an install made by an older mod version up to date: the bundled
-     * script is replaced and the packages are installed again from the new pins.
-     */
+    /** An install made by an older mod version, whose packages no longer match the pins. */
     public boolean needsUpdate() {
-        return isInstalled() && !EnginePaths.ENGINE_VERSION.equals(installedProperty("version").orElse(""));
+        return isInstalled() && !this.component.version().equals(installedProperty("version").orElse(""));
     }
 
     public void cancel() {
@@ -151,14 +157,23 @@ public final class EngineInstaller {
         stopChild();
     }
 
-    /** Deletes the whole engine folder, models included. The caller stops the engine first. */
+    /**
+     * Removes this part. Speech recognition is the base: removing it deletes
+     * the whole engine folder, voice included. The caller stops the engine first.
+     */
     public synchronized void uninstall() throws IOException {
         cancel();
-        deleteTree(EnginePaths.root());
+        if (this.component == EngineComponent.SPEECH) {
+            deleteTree(EnginePaths.root());
+        } else {
+            deleteTree(this.component.environmentDirectory());
+            deleteTree(this.component.modelsDirectory());
+            Files.deleteIfExists(this.component.marker());
+        }
         this.progress = idle();
     }
 
-    /** Copies the bundled script over the installed one, so an engine always runs the mod's own version. */
+    /** Copies the bundled scripts over the installed ones, so an engine always runs the mod's own version. */
     public static void refreshBundledFiles() throws IOException {
         Files.createDirectories(EnginePaths.engineDirectory());
         for (String name : BUNDLED_FILES) {
@@ -184,20 +199,22 @@ public final class EngineInstaller {
             }
             refreshBundledFiles();
 
-            runUv("python", List.of("venv", "--python", EnginePaths.PYTHON_VERSION, "--allow-existing", ".venv"));
+            String environment = EnginePaths.engineDirectory().relativize(this.component.environmentDirectory()).toString();
+            runUv("python", List.of("venv", "--python", EnginePaths.PYTHON_VERSION, "--allow-existing", environment));
             PackageSet packages = this.packageSet != null ? this.packageSet : PackageSet.detect();
             this.packageSet = packages;
-            runUv("packages", List.of("pip", "install",
-                    "--python", EnginePaths.venvPythonForInstall().toString(),
-                    "--exclude-newer", EnginePaths.PACKAGES_PUBLISHED_BEFORE,
-                    "-r", packages.requirementsFile()));
+            List<String> arguments = new ArrayList<>(List.of("pip", "install",
+                    "--python", this.component.pythonForInstall().toString()));
+            arguments.addAll(this.component.installArguments());
+            arguments.addAll(List.of("-r", this.component.requirementsFile(packages)));
+            runUv("packages", arguments);
 
             writeMarker(packages);
             finish(new Progress(State.INSTALLED, "", 100, ""));
         } catch (IOException | RuntimeException exception) {
             String reason = this.isCancelled ? "cancelled" : describe(exception);
             if (!this.isCancelled) {
-                VoiceTranslate.LOGGER.warn("Speech engine install failed: {}", reason);
+                VoiceTranslate.LOGGER.warn("{} engine install failed: {}", this.component, reason);
             }
             finish(new Progress(State.FAILED, "", -1, reason));
         } catch (InterruptedException exception) {
@@ -269,9 +286,11 @@ public final class EngineInstaller {
         // day they update or remove it.
         environment.put("UV_MANAGED_PYTHON", "1");
         environment.put("UV_NO_PROGRESS", "1");
+        // PyTorch's wheels are over two gigabytes; uv's default 30 s read timeout is too short on slow links.
+        environment.put("UV_HTTP_TIMEOUT", "300");
 
         Files.createDirectories(EnginePaths.logDirectory());
-        Path log = EnginePaths.logDirectory().resolve("install.log");
+        Path log = EnginePaths.logDirectory().resolve(this.component.installLogName());
         Process process = builder.start();
         this.child = process;
         try (BufferedReader output = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
@@ -303,15 +322,15 @@ public final class EngineInstaller {
         }
     }
 
-    private static Progress idle() {
+    private Progress idle() {
         if (!EnginePaths.isSupported()) {
             return new Progress(State.UNSUPPORTED, "", -1, "");
         }
-        boolean isInstalled = installedProperty("version").isPresent() && Files.isRegularFile(EnginePaths.python());
+        boolean isInstalled = installedProperty("version").isPresent() && Files.isRegularFile(this.component.python());
         return new Progress(isInstalled ? State.INSTALLED : State.NOT_INSTALLED, "", -1, "");
     }
 
-    private static Optional<PackageSet> installedPackageSet() {
+    private Optional<PackageSet> installedPackageSet() {
         return installedProperty("packages").flatMap(name -> {
             try {
                 return Optional.of(PackageSet.valueOf(name));
@@ -321,8 +340,8 @@ public final class EngineInstaller {
         });
     }
 
-    private static Optional<String> installedProperty(String key) {
-        Path marker = EnginePaths.marker();
+    private Optional<String> installedProperty(String key) {
+        Path marker = this.component.marker();
         if (!Files.isRegularFile(marker)) {
             return Optional.empty();
         }
@@ -335,18 +354,18 @@ public final class EngineInstaller {
         }
     }
 
-    private static void writeMarker(PackageSet packages) throws IOException {
+    private void writeMarker(PackageSet packages) throws IOException {
         Properties properties = new Properties();
-        properties.setProperty("version", EnginePaths.ENGINE_VERSION);
+        properties.setProperty("version", this.component.version());
         properties.setProperty("packages", packages.name());
-        try (OutputStream output = Files.newOutputStream(EnginePaths.marker())) {
-            properties.store(output, "Voice Translate speech engine");
+        try (OutputStream output = Files.newOutputStream(this.component.marker())) {
+            properties.store(output, "Voice Translate " + this.component.name().toLowerCase() + " engine");
         }
     }
 
-    private static void forgetPendingInstall() {
+    private void forgetPendingInstall() {
         try {
-            Files.deleteIfExists(EnginePaths.pendingInstallMarker());
+            Files.deleteIfExists(this.component.pendingInstallMarker());
         } catch (IOException exception) {
             VoiceTranslate.LOGGER.warn("Could not clear the engine install note", exception);
         }

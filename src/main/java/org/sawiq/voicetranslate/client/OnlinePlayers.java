@@ -19,6 +19,8 @@ import net.minecraft.client.multiplayer.PlayerInfo;
 final class OnlinePlayers {
     private volatile Map<UUID, String> names = Map.of();
     private volatile UUID self;
+    /** The loaded player entities, for placing spoken translations at the speaker. */
+    private volatile Map<UUID, Object> entities = Map.of();
 
     /** Game thread only. */
     void refresh(Minecraft client) {
@@ -33,6 +35,20 @@ final class OnlinePlayers {
             current.put(info.getProfile().id(), info.getProfile().name());
         }
         this.names = Map.copyOf(current);
+
+        Map<UUID, Object> loaded = new HashMap<>();
+        if (client.level != null) {
+            client.level.players().forEach(player -> loaded.put(player.getUUID(), player));
+        }
+        this.entities = Map.copyOf(loaded);
+    }
+
+    Object entityOf(UUID id) {
+        return this.entities.get(id);
+    }
+
+    UUID self() {
+        return this.self;
     }
 
     /** Another player who is on the server. */

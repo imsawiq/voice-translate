@@ -55,7 +55,7 @@ public final class TranslationPipeline implements UtteranceListener, AutoCloseab
 
     private final CaptionBoard board;
     private final SpeakerLanguages languages;
-    private final Consumer<Caption> onFinished;
+    private final Consumer<FinishedSentence> onFinished;
     private final Consumer<ServiceException> onFailure;
     private final ThreadPoolExecutor workers;
     private final Map<UUID, Long> newestDraft = new ConcurrentHashMap<>();
@@ -76,11 +76,11 @@ public final class TranslationPipeline implements UtteranceListener, AutoCloseab
     private volatile long averageLatencyMillis;
 
     /**
-     * @param onFinished called on a worker thread with every finished, non-empty caption
+     * @param onFinished called on a worker thread with every finished, non-empty sentence
      * @param onFailure  called on a worker thread whenever a job fails
      */
     public TranslationPipeline(CaptionBoard board, SpeakerLanguages languages,
-                               Consumer<Caption> onFinished, Consumer<ServiceException> onFailure) {
+                               Consumer<FinishedSentence> onFinished, Consumer<ServiceException> onFailure) {
         this.board = board;
         this.languages = languages;
         this.onFinished = onFinished;
@@ -230,7 +230,7 @@ public final class TranslationPipeline implements UtteranceListener, AutoCloseab
             this.translatedCount.incrementAndGet();
             long latency = System.currentTimeMillis() - queuedAt;
             this.averageLatencyMillis = this.averageLatencyMillis == 0 ? latency : (this.averageLatencyMillis * 4 + latency) / 5;
-            this.onFinished.accept(caption);
+            this.onFinished.accept(new FinishedSentence(caption, utterance.samples(), current.targetLanguage()));
         }
     }
 

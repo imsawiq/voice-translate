@@ -13,8 +13,6 @@ import java.util.Optional;
  * every trace.</p>
  */
 public final class EnginePaths {
-    /** Bumped whenever the script or the package pins change, so installs update themselves. */
-    static final String ENGINE_VERSION = "1.0.0";
     /** Packages newer than this are never installed, so every install resolves to the same versions. */
     static final String PACKAGES_PUBLISHED_BEFORE = "2026-11-01T00:00:00Z";
     static final String PYTHON_VERSION = "3.12";
@@ -94,24 +92,6 @@ public final class EnginePaths {
         return root().resolve("engine");
     }
 
-    static Path script() {
-        return engineDirectory().resolve("vt_engine.py");
-    }
-
-    /** On Windows the windowless Python, so the engine does not pop up a console. */
-    static Path python() {
-        Path venv = engineDirectory().resolve(".venv");
-        return isWindows()
-                ? venv.resolve("Scripts").resolve("pythonw.exe")
-                : venv.resolve("bin").resolve("python");
-    }
-
-    /** The Python uv installs packages into; the console one, whose output uv reads. */
-    static Path venvPythonForInstall() {
-        Path venv = engineDirectory().resolve(".venv");
-        return isWindows() ? venv.resolve("Scripts").resolve("python.exe") : venv.resolve("bin").resolve("python");
-    }
-
     public static Path modelsDirectory() {
         return root().resolve("models");
     }
@@ -120,12 +100,4 @@ public final class EnginePaths {
         return root().resolve("logs");
     }
 
-    static Path marker() {
-        return root().resolve("installed.properties");
-    }
-
-    /** Present while an install the player agreed to has not finished. */
-    static Path pendingInstallMarker() {
-        return root().resolve("install-pending");
-    }
 }

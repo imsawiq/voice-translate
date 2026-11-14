@@ -16,6 +16,8 @@
 - **Knows Minecraft** — item, block, mob and biome names come from the game's own language files, so "follow me to the nether, I have ender pearls" becomes "следуй за мной в Незер, у меня есть эндер-жемчуг", not "в Пустоту, жемчуг Эндера".
 - **Remembers who speaks what** — once a player has been heard in a language a few times, Whisper is told, which makes short phrases far more accurate. Players who switch language are followed.
 - **Filters Whisper's inventions** — no "Thanks for watching" or "Продолжение следует..." over a player who only breathed.
+- **Spoken translation in the speaker's voice** — optionally, every translation is also read aloud from the player who said it, in a copy of their own voice made from a few seconds of their speech, while their real voice gets quieter. Runs on your graphics card with Chatterbox, in 23 languages.
+- **Speak other languages yourself** — turn on "Send my speech translated" and others hear what you said in English, German or any of 23 languages, in your voice, a few seconds after you finish. They need nothing installed.
 - **Per-player switch, history, chat copy** — turn translation off for a friend who speaks your language, scroll back through everything said this session, copy it, or have translations written into the chat.
 - **Part of the voice mod's menu** — a button next to Simple Voice Chat's own icons, and a Voice Translate section in Plasmo Voice's Addons tab with the main switches. The settings window itself is laid out like Plasmo Voice's settings and the voice changer studio.
 - **English, Russian and Ukrainian interface**.
@@ -35,6 +37,15 @@
    - macOS: `~/Library/Application Support/VoiceTranslateEngine`
 3. That is it. Subtitles appear as people talk, in your game's language. The **General** tab changes the target language and shows how fast translation is going.
 
+### 🔊 Spoken translation
+
+The **Voice** tab has two switches that need a second, bigger engine. Press **Install the voice engine** there: about 6 GB once, into the same folder. It needs an NVIDIA graphics card with about 5 GB of free memory next to the speech engine (an 8 GB card runs both); on the processor it works but is far too slow to keep up.
+
+- **Speak translations** reads other players' translations aloud from where they stand. With **In the speaker's voice** on, the first few seconds of a player's speech are used to copy their voice; until then, and with the switch off, a neutral voice speaks. **Original voice** sets how quiet their own voice becomes.
+- **Send my speech translated** records your phrase while you talk and sends nothing; when you stop, it is recognised, translated into the language you picked and sent through the voice mod in your voice. On an RTX 4060 Ti a five-second phrase arrives about five to seven seconds after you stop. If anything fails, your original phrase is sent. A key to flip it is in the controls.
+
+Voices are spoken in Arabic, Chinese, Danish, Dutch, English, Finnish, French, German, Greek, Hebrew, Hindi, Italian, Japanese, Korean, Malay, Norwegian, Polish, Portuguese, Russian, Spanish, Swahili, Swedish and Turkish. Other languages, Ukrainian among them, stay subtitles.
+
 No graphics card, or no wish to download anything? Pick **Groq** on the Speech tab and paste a free key from [console.groq.com](https://console.groq.com). Groq's Whisper is as accurate as the local one and answers in a fraction of a second.
 
 ### ⚙️ Settings
@@ -50,16 +61,19 @@ No graphics card, or no wish to download anything? Pick **Groq** on the Speech t
 | Translation | Translator | Google, DeepL or an AI model, with keys and model names |
 | Display | Above heads / Panel | Where subtitles go; the panel can show everyone, only players off screen, or nobody |
 | Display | Show original, live drafts, copy to chat, text size, background, bubble distance | |
+| Voice | Speak translations / In the speaker's voice | Read other players' translations aloud, in a copy of their voice |
+| Voice | Original voice / Translation volume | How quiet the real voice gets, how loud the spoken translation is |
+| Voice | Send my speech translated / Into | Others hear you in another language, in your voice |
 | History | | Everything translated this session, newest first; copy or clear |
 | Players | | Turn translation off for single players |
 
-Keys, in Minecraft's controls under **Voice Translate**: open settings (**J**), turn translation on and off, open history (both unbound).
+Keys, in Minecraft's controls under **Voice Translate**: open settings (**J**), turn translation on and off, open history, send my speech translated on and off (the last three unbound).
 
 The settings live in `config/voice-translate.json`. API keys are stored there in plain text, like any other mod's settings; they are masked on screen and never written to the log.
 
 ### 🔒 Privacy
 
-With the local engine, nothing about other players' voices leaves your computer. With Groq or OpenAI, their voices are sent to that service to be recognised, and the Speech tab says so. Recognised text is sent to the translator you chose. Voices are never recorded to disk.
+With the local engine, nothing about other players' voices leaves your computer. With Groq or OpenAI, their voices are sent to that service to be recognised, and the Speech tab says so. Recognised text is sent to the translator you chose. Spoken translation runs only on your computer. Voices are never recorded to disk.
 
 ### 🛠️ Building
 
@@ -89,6 +103,8 @@ builds all six jars (26.1, 26.2, 26.3 × Fabric, NeoForge) into `dist/`. One tar
 - **Знает Minecraft** — названия предметов, блоков, мобов и биомов берутся из языковых файлов самой игры, поэтому «follow me to the nether, I have ender pearls» становится «следуй за мной в Незер, у меня есть эндер-жемчуг», а не «в Пустоту, жемчуг Эндера».
 - **Помнит, кто на каком языке говорит** — после нескольких фраз Whisper получает подсказку о языке игрока, и короткие фразы распознаются заметно точнее. Если игрок перешёл на другой язык, мод это заметит.
 - **Отсеивает выдумки Whisper** — никаких «Продолжение следует...» и «Субтитры сделал DimaTorzok» поверх игрока, который просто вздохнул.
+- **Озвучка перевода голосом говорящего** — по желанию каждый перевод ещё и звучит от игрока, который его сказал, копией его собственного голоса по нескольким секундам речи, а настоящий голос становится тише. Работает на видеокарте через Chatterbox, на 23 языках.
+- **Говорите на других языках сами** — включите «Отправлять мою речь переводом», и остальные услышат сказанное вами на английском, немецком или любом из 23 языков вашим голосом, через несколько секунд после того, как вы закончили. Им ничего ставить не нужно.
 - **Выключение для отдельных игроков, история, копия в чат** — отключите перевод для друга, который говорит на вашем языке, пролистайте всё сказанное за сессию, скопируйте или дублируйте переводы в чат.
 - **Встроен в меню голосового мода** — кнопка рядом с иконками Simple Voice Chat и раздел Voice Translate во вкладке «Аддоны» в настройках Plasmo Voice с главными переключателями. Само окно настроек устроено как настройки Plasmo Voice и студия voice changer'а.
 - **Интерфейс на английском, русском и украинском**.
@@ -108,6 +124,15 @@ builds all six jars (26.1, 26.2, 26.3 × Fabric, NeoForge) into `dist/`. One tar
    - macOS: `~/Library/Application Support/VoiceTranslateEngine`
 3. Готово. Субтитры появляются, пока люди говорят, на языке вашей игры. На вкладке **Основное** можно сменить язык перевода и посмотреть, насколько быстро всё работает.
 
+### 🔊 Озвучка
+
+На вкладке **Озвучка** два переключателя, которым нужен второй, более тяжёлый движок. Нажмите там **Установить голосовой движок**: один раз около 6 ГБ, в ту же папку. Нужна видеокарта NVIDIA, у которой рядом с движком распознавания свободно около 5 ГБ памяти (карта на 8 ГБ тянет оба); на процессоре работает, но слишком медленно, чтобы успевать.
+
+- **Озвучивать перевод** читает переводы других игроков вслух с того места, где они стоят. С **Голосом говорящего** первые несколько секунд речи игрока идут на копию его голоса; до этого, и если переключатель выключен, говорит нейтральный голос. **Громкость оригинала** задаёт, насколько тише становится его собственный голос.
+- **Отправлять мою речь переводом** записывает фразу, пока вы говорите, и ничего не отправляет; когда замолчите, она распознаётся, переводится на выбранный язык и уходит через голосовой мод вашим голосом. На RTX 4060 Ti пятисекундная фраза доходит примерно через пять–семь секунд после того, как вы замолчали. Если что-то не удалось, уйдёт исходная фраза. Клавиша для переключения есть в управлении.
+
+Озвучиваются английский, арабский, греческий, датский, иврит, испанский, итальянский, китайский, корейский, малайский, немецкий, нидерландский, норвежский, польский, португальский, русский, суахили, турецкий, финский, французский, хинди, шведский и японский. Остальные языки, в том числе украинский, остаются субтитрами.
+
 Нет видеокарты или не хочется ничего скачивать? Выберите **Groq** на вкладке «Речь» и вставьте бесплатный ключ с [console.groq.com](https://console.groq.com). Whisper у Groq такой же точный, как локальный, и отвечает за доли секунды.
 
 ### ⚙️ Настройки
@@ -123,16 +148,19 @@ builds all six jars (26.1, 26.2, 26.3 × Fabric, NeoForge) into `dist/`. One tar
 | Перевод | Переводчик | Google, DeepL или ИИ-модель, с ключами и названием модели |
 | Отображение | Над головой / Панель | Где показывать субтитры; панель — для всех, только для тех, кого не видно, или скрыта |
 | Отображение | Оригинал, живые черновики, дублировать в чат, размер текста, фон, расстояние для облачков | |
+| Озвучка | Озвучивать перевод / Голосом говорящего | Читать переводы других игроков вслух копией их голоса |
+| Озвучка | Громкость оригинала / Громкость перевода | Насколько тише настоящий голос и насколько громко звучит перевод |
+| Озвучка | Отправлять мою речь переводом / На язык | Остальные слышат вас на другом языке вашим голосом |
 | История | | Всё переведённое за сессию, новое сверху; копировать или очистить |
 | Игроки | | Отключить перевод для отдельных игроков |
 
-Клавиши в управлении Minecraft, раздел **Voice Translate**: открыть настройки (**J**), включить и выключить перевод, открыть историю (обе без назначения).
+Клавиши в управлении Minecraft, раздел **Voice Translate**: открыть настройки (**J**), включить и выключить перевод, открыть историю, включить и выключить отправку моей речи переводом (последние три без назначения).
 
 Настройки хранятся в `config/voice-translate.json`. Ключи API лежат там открытым текстом, как и настройки любого другого мода; на экране они скрыты и никогда не пишутся в лог.
 
 ### 🔒 Приватность
 
-С локальным движком ничего о голосах других игроков не покидает ваш компьютер. С Groq или OpenAI их голоса отправляются в этот сервис для распознавания, и вкладка «Речь» об этом предупреждает. Распознанный текст отправляется выбранному переводчику. Голоса никогда не записываются на диск.
+С локальным движком ничего о голосах других игроков не покидает ваш компьютер. С Groq или OpenAI их голоса отправляются в этот сервис для распознавания, и вкладка «Речь» об этом предупреждает. Распознанный текст отправляется выбранному переводчику. Озвучка работает только на вашем компьютере. Голоса никогда не записываются на диск.
 
 ### 🛠️ Сборка
 

@@ -11,6 +11,7 @@ public final class TranslateConfig {
     public RecognitionSettings recognition = new RecognitionSettings();
     public TranslationSettings translation = new TranslationSettings();
     public DisplaySettings display = new DisplaySettings();
+    public DubbingSettings dubbing = new DubbingSettings();
     public ApiKeys keys = new ApiKeys();
     /** Players whose speech is not translated. */
     public Set<UUID> mutedPlayers = new LinkedHashSet<>();
@@ -30,6 +31,9 @@ public final class TranslateConfig {
         if (this.display == null) {
             this.display = new DisplaySettings();
         }
+        if (this.dubbing == null) {
+            this.dubbing = new DubbingSettings();
+        }
         if (this.keys == null) {
             this.keys = new ApiKeys();
         }
@@ -40,6 +44,7 @@ public final class TranslateConfig {
         this.recognition.sanitize();
         this.translation.sanitize();
         this.display.sanitize();
+        this.dubbing.sanitize();
         this.keys.sanitize();
         return this;
     }

@@ -6,6 +6,7 @@ import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -20,12 +21,17 @@ import java.util.concurrent.TimeUnit;
 final class EngineProcess {
     private static final int LOG_TAIL_BYTES = 4096;
 
+    private final EngineComponent component;
     private Process process;
     private int port;
     private long startedAt;
 
     /** How a run that nobody stopped ended. */
     record Exit(int exitCode, long uptimeMillis, String lastLogLine) {
+    }
+
+    EngineProcess(EngineComponent component) {
+        this.component = component;
     }
 
     synchronized boolean isRunning() {
@@ -40,21 +46,22 @@ final class EngineProcess {
         return this.startedAt;
     }
 
-    synchronized void start(String model, String device) throws IOException {
+    /** @param arguments what this component's script needs besides port, models folder and parent */
+    synchronized void start(List<String> arguments) throws IOException {
         if (isRunning()) {
             return;
         }
         EngineInstaller.refreshBundledFiles();
         Files.createDirectories(EnginePaths.logDirectory());
-        Files.createDirectories(EnginePaths.modelsDirectory());
+        Files.createDirectories(this.component.modelsDirectory());
         this.port = freePort();
-        List<String> command = List.of(
-                EnginePaths.python().toString(), "-I", EnginePaths.script().toString(),
+        List<String> command = new ArrayList<>(List.of(
+                this.component.python().toString(), "-I",
+                EnginePaths.engineDirectory().resolve(this.component.script()).toString(),
                 "--port", Integer.toString(this.port),
-                "--models", EnginePaths.modelsDirectory().toString(),
-                "--model", model,
-                "--device", device,
-                "--parent-pid", Long.toString(ProcessHandle.current().pid()));
+                "--models", this.component.modelsDirectory().toString(),
+                "--parent-pid", Long.toString(ProcessHandle.current().pid())));
+        command.addAll(arguments);
         this.process = new ProcessBuilder(command)
                 .directory(EnginePaths.engineDirectory().toFile())
                 .redirectErrorStream(true)
@@ -97,12 +104,12 @@ final class EngineProcess {
         }
     }
 
-    private static Path outputLog() {
-        return EnginePaths.logDirectory().resolve("engine-output.log");
+    private Path outputLog() {
+        return EnginePaths.logDirectory().resolve(this.component.logName());
     }
 
     /** The last non-empty line the engine printed; a Python traceback ends with the reason. */
-    private static String lastLogLine() {
+    private String lastLogLine() {
         try (RandomAccessFile file = new RandomAccessFile(outputLog().toFile(), "r")) {
             long start = Math.max(0L, file.length() - LOG_TAIL_BYTES);
             byte[] tail = new byte[(int) (file.length() - start)];

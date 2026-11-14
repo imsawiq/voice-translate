@@ -5,6 +5,8 @@ package org.sawiq.voicetranslate.voice.svc;
 import de.maxhenkel.voicechat.api.VoicechatPlugin;
 import de.maxhenkel.voicechat.api.events.ClientReceiveSoundEvent;
 import de.maxhenkel.voicechat.api.events.ClientSoundEvent;
+import de.maxhenkel.voicechat.api.events.ClientVoicechatConnectionEvent;
+import org.sawiq.voicetranslate.audio.Pcm;
 import de.maxhenkel.voicechat.api.events.EventRegistration;
 import java.util.UUID;
 import org.sawiq.voicetranslate.VoiceTranslate;
@@ -33,6 +35,7 @@ public final class SimpleVoiceChatPlugin implements VoicechatPlugin {
         registration.registerEvent(ClientReceiveSoundEvent.EntitySound.class, this::onEntitySound, PRIORITY);
         registration.registerEvent(ClientReceiveSoundEvent.StaticSound.class, this::onStaticSound, PRIORITY);
         registration.registerEvent(ClientSoundEvent.class, this::onOwnSound, PRIORITY);
+        registration.registerEvent(ClientVoicechatConnectionEvent.class, this::onConnection, PRIORITY);
         VoiceBridge.markSimpleVoiceChatHooked();
         VoiceTranslate.LOGGER.info("Listening to Simple Voice Chat");
     }
@@ -43,6 +46,17 @@ public final class SimpleVoiceChatPlugin implements VoicechatPlugin {
 
     private void onStaticSound(ClientReceiveSoundEvent.StaticSound event) {
         deliver(event, event.getId());
+    }
+
+    /** Spoken translations play through Simple Voice Chat while it is connected. */
+    private void onConnection(ClientVoicechatConnectionEvent event) {
+        try {
+            VoiceBridge.setDubOutput(event.isConnected()
+                    ? new SimpleVoiceChatDubOutput(event.getVoicechat(), VoiceBridge::entityOf)
+                    : null);
+        } catch (RuntimeException exception) {
+            VoiceTranslate.LOGGER.error("Could not set up spoken translations for Simple Voice Chat", exception);
+        }
     }
 
     /** The player's own microphone as it is sent, once Simple Voice Chat decided they are talking. */
@@ -65,6 +79,11 @@ public final class SimpleVoiceChatPlugin implements VoicechatPlugin {
         }
         try {
             VoiceBridge.deliver(speakerId, "", audio, SIMPLE_VOICE_CHAT_RATE);
+            // Quieter while their speech is dubbed, so the translation is what is heard.
+            float gain = VoiceBridge.originalGain(speakerId);
+            if (gain < 0.999f) {
+                event.setRawAudio(Pcm.scaled(audio, gain));
+            }
         } catch (RuntimeException exception) {
             // Thrown into Simple Voice Chat's audio thread, this would cut the
             // player's voice off for everyone listening.

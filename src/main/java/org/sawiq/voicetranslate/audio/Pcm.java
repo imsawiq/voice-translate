@@ -13,6 +13,20 @@ public final class Pcm {
     private Pcm() {
     }
 
+    /** A whole 48 kHz recording at the 16 kHz speech recognition wants. */
+    public static short[] toSpeechRate(short[] voice) {
+        return new Downsampler().process(voice);
+    }
+
+    /** A copy scaled by {@code gain}, clipped to 16 bits. */
+    public static short[] scaled(short[] samples, float gain) {
+        short[] result = new short[samples.length];
+        for (int i = 0; i < samples.length; i++) {
+            result[i] = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, Math.round(samples[i] * gain)));
+        }
+        return result;
+    }
+
     /** Loudness of a frame in dBFS; silence is -90. */
     public static double rmsDb(short[] samples) {
         if (samples.length == 0) {

@@ -1,6 +1,13 @@
 package org.sawiq.voicetranslate.voice;
 
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Function;
+import java.util.function.ToDoubleFunction;
+import org.sawiq.voicetranslate.dub.DubPlayer;
+import org.sawiq.voicetranslate.dub.OwnSpeechTranslator;
+import org.sawiq.voicetranslate.VoiceTranslate;
 import org.sawiq.voicetranslate.audio.VoiceIntake;
 
 /**
@@ -15,6 +22,11 @@ import org.sawiq.voicetranslate.audio.VoiceIntake;
 public final class VoiceBridge {
     private static volatile VoiceIntake intake;
     private static volatile UUID ownId;
+    private static volatile ToDoubleFunction<UUID> originalGain = speaker -> 1.0;
+    private static volatile DubPlayer dubPlayer;
+    private static volatile OwnSpeechTranslator ownSpeech;
+    private static final List<Runnable> TICKERS = new CopyOnWriteArrayList<>();
+    private static volatile Function<UUID, Object> entities = id -> null;
     private static volatile boolean isSimpleVoiceChatHooked;
     private static volatile boolean isPlasmoVoiceHooked;
 
@@ -45,6 +57,81 @@ public final class VoiceBridge {
         UUID self = ownId;
         if (self != null) {
             deliver(self, "", mono, sampleRate);
+        }
+    }
+
+    /**
+     * How loud a player's own voice should be played, 0..1: lower while their
+     * speech is being dubbed, so the translation is what is heard.
+     */
+    public static float originalGain(UUID speaker) {
+        return speaker == null ? 1f : (float) originalGain.applyAsDouble(speaker);
+    }
+
+    public static void setOriginalGain(ToDoubleFunction<UUID> gain) {
+        originalGain = gain;
+    }
+
+    public static void connectDubbing(DubPlayer player, OwnSpeechTranslator translator) {
+        dubPlayer = player;
+        ownSpeech = translator;
+    }
+
+    /** The voice mod in use says where spoken translations are played; null when it goes away. */
+    public static void setDubOutput(DubPlayer.Output output) {
+        DubPlayer player = dubPlayer;
+        if (player != null) {
+            player.setOutput(output);
+        }
+    }
+
+    /** Whether the player's speech is being translated before it is sent. */
+    public static boolean isTranslatingOwnSpeech() {
+        OwnSpeechTranslator translator = ownSpeech;
+        return translator != null && translator.isEnabled();
+    }
+
+    public static boolean isOwnSpeechBusy() {
+        OwnSpeechTranslator translator = ownSpeech;
+        return translator != null && translator.isBusy();
+    }
+
+    /**
+     * One 20 ms microphone tick, on the voice mod's capture thread.
+     *
+     * @param spoken the 48 kHz mono frame the player said, or null while silent
+     * @return what to send: the frame unchanged while own speech is not translated
+     */
+    public static short[] processOwnMicTick(short[] spoken) {
+        OwnSpeechTranslator translator = ownSpeech;
+        if (translator == null || !translator.isEnabled()) {
+            return spoken;
+        }
+        return translator.onTick(spoken);
+    }
+
+    /** The client's player entity for a speaker, or null; for placing their dub. */
+    public static Object entityOf(UUID speaker) {
+        return entities.apply(speaker);
+    }
+
+    public static void setEntityLookup(Function<UUID, Object> lookup) {
+        entities = lookup;
+    }
+
+    /** Work a voice mod integration does on the game thread every tick. */
+    public static void addTicker(Runnable ticker) {
+        TICKERS.add(ticker);
+    }
+
+    /** Game thread, every client tick. */
+    public static void tick() {
+        for (Runnable ticker : TICKERS) {
+            try {
+                ticker.run();
+            } catch (RuntimeException exception) {
+                VoiceTranslate.LOGGER.error("A voice mod hook failed", exception);
+            }
         }
     }
 

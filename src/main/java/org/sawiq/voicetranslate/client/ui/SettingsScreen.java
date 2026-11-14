@@ -28,6 +28,7 @@ public final class SettingsScreen extends Screen {
         SPEECH(SpeechTab::new),
         TRANSLATION(TranslationTab::new),
         DISPLAY(DisplayTab::new),
+        VOICE(VoiceTab::new),
         HISTORY(HistoryTab::new),
         PLAYERS(PlayersTab::new);
 

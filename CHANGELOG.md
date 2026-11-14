@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### EN
+
+- Other players' translations can be read aloud from where they stand, in a copy of their own voice, with their real voice turned down. Uses Chatterbox on your graphics card, a second engine installed from the new Voice tab.
+- Your own speech can be sent translated, in your voice: the phrase is recorded while you talk and sent in the chosen language once you stop. Works on Simple Voice Chat and Plasmo Voice, and other players need nothing.
+- Switching the speech model no longer loses a downloaded model or starts a second download.
+
+### RU
+
+- Переводы других игроков можно слушать голосом с того места, где они стоят, копией их собственного голоса, а настоящий голос становится тише. Работает через Chatterbox на видеокарте, второй движок ставится с новой вкладки «Озвучка».
+- Свою речь можно отправлять переводом своим голосом: фраза записывается, пока вы говорите, и уходит на выбранном языке, когда замолчите. Работает в Simple Voice Chat и Plasmo Voice, другим игрокам ничего не нужно.
+- Смена модели распознавания больше не теряет скачанную модель и не запускает вторую загрузку.
+
 ## 1.0.0
 
 ### EN

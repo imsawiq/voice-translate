@@ -13,16 +13,18 @@ public final class KeyBindings {
     private final KeyMapping openSettings;
     private final KeyMapping toggle;
     private final KeyMapping openHistory;
+    private final KeyMapping toggleMySpeech;
 
     /** @param category the heading; each loader registers it its own way */
     public KeyBindings(KeyMapping.Category category) {
         this.openSettings = new KeyMapping("key.voice-translate.settings", InputConstants.KEY_J, category);
         this.toggle = new KeyMapping("key.voice-translate.toggle", InputConstants.UNKNOWN.getValue(), category);
         this.openHistory = new KeyMapping("key.voice-translate.history", InputConstants.UNKNOWN.getValue(), category);
+        this.toggleMySpeech = new KeyMapping("key.voice-translate.my_speech", InputConstants.UNKNOWN.getValue(), category);
     }
 
     public List<KeyMapping> all() {
-        return List.of(this.openSettings, this.toggle, this.openHistory);
+        return List.of(this.openSettings, this.toggle, this.openHistory, this.toggleMySpeech);
     }
 
     KeyMapping openSettings() {
@@ -31,6 +33,10 @@ public final class KeyBindings {
 
     KeyMapping toggle() {
         return this.toggle;
+    }
+
+    KeyMapping toggleMySpeech() {
+        return this.toggleMySpeech;
     }
 
     KeyMapping openHistory() {
