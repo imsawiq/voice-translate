@@ -1,10 +1,12 @@
 package org.sawiq.voicetranslate.client;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
@@ -14,7 +16,6 @@ import org.sawiq.voicetranslate.audio.VoiceIntake;
 import org.sawiq.voicetranslate.caption.Caption;
 import org.sawiq.voicetranslate.caption.CaptionBoard;
 import org.sawiq.voicetranslate.client.compat.ClientAccess;
-import org.sawiq.voicetranslate.client.ui.HistoryScreen;
 import org.sawiq.voicetranslate.client.ui.SettingsScreen;
 import org.sawiq.voicetranslate.config.ConfigStore;
 import org.sawiq.voicetranslate.config.RecognitionService;
@@ -43,6 +44,8 @@ public final class VoiceTranslateClient {
     private final OnlinePlayers players = new OnlinePlayers();
     private final GlossaryLoader glossary = new GlossaryLoader();
     private final Queue<Caption> finishedForChat = new ConcurrentLinkedQueue<>();
+    /** Other windows showing these settings, such as Plasmo Voice's; told after every change. */
+    private final List<Runnable> settingsListeners = new CopyOnWriteArrayList<>();
     private ConfigStore store;
     private volatile TranslateConfig config = new TranslateConfig();
     private volatile SegmenterSettings segmenterSettings = SegmenterSettings.DEFAULT;
@@ -123,6 +126,11 @@ public final class VoiceTranslateClient {
         this.glossary.request(ServiceFactory.targetLanguage(current, this.lastGameLanguage), this::applySettings);
         this.pipeline.use(ServiceFactory.create(current, this.engine, this.lastGameLanguage, this.glossary.current()));
         this.store.save(current);
+        this.settingsListeners.forEach(Runnable::run);
+    }
+
+    public void addSettingsListener(Runnable listener) {
+        this.settingsListeners.add(listener);
     }
 
     public void setEnabled(boolean enabled) {
@@ -150,6 +158,11 @@ public final class VoiceTranslateClient {
 
     public CaptionBoard captions() {
         return this.captions;
+    }
+
+    /** How many game names the glossary for the current target language holds; 0 while it loads or for English. */
+    public int glossarySize() {
+        return this.glossary.current().size();
     }
 
     public LocalEngine engine() {
@@ -188,7 +201,7 @@ public final class VoiceTranslateClient {
             ClientAccess.openScreen(new SettingsScreen(ClientAccess.currentScreen()));
         }
         while (this.keys.openHistory().consumeClick()) {
-            ClientAccess.openScreen(new HistoryScreen(ClientAccess.currentScreen()));
+            ClientAccess.openScreen(new SettingsScreen(ClientAccess.currentScreen(), SettingsScreen.Page.HISTORY));
         }
         while (this.keys.toggle().consumeClick()) {
             setEnabled(!this.config.enabled);

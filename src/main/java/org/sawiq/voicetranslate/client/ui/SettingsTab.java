@@ -5,12 +5,10 @@ import org.sawiq.voicetranslate.config.TranslateConfig;
 
 /** One page of the settings screen. */
 interface SettingsTab {
-    String titleKey();
-
-    void build(FormLayout form, Context context);
+    void build(SettingsList list, Context context);
 
     /**
-     * What a tab may ask of the screen.
+     * What a page may ask of the screen.
      *
      * @param rebuild lays the page out again, for a choice that shows or hides other settings
      * @param apply   puts the settings into effect now, for choices whose result should show at once

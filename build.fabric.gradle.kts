@@ -76,6 +76,7 @@ tasks {
         )
         inputs.properties(props)
         filesMatching("fabric.mod.json") { expand(props) }
+        filesMatching("*.mixins.json") { expand("java" to "JAVA_${requiredJava.majorVersion}") }
         exclude("META-INF/neoforge.mods.toml")
     }
 

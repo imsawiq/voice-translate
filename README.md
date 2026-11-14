@@ -17,6 +17,7 @@
 - **Remembers who speaks what** — once a player has been heard in a language a few times, Whisper is told, which makes short phrases far more accurate. Players who switch language are followed.
 - **Filters Whisper's inventions** — no "Thanks for watching" or "Продолжение следует..." over a player who only breathed.
 - **Per-player switch, history, chat copy** — turn translation off for a friend who speaks your language, scroll back through everything said this session, copy it, or have translations written into the chat.
+- **Part of the voice mod's menu** — a button next to Simple Voice Chat's own icons, and a Voice Translate section in Plasmo Voice's Addons tab with the main switches. The settings window itself is laid out like Plasmo Voice's settings and the voice changer studio.
 - **English, Russian and Ukrainian interface**.
 
 ### 📦 Dependencies
@@ -27,7 +28,7 @@
 
 ### 🎮 Getting started
 
-1. Install the mod next to your voice mod. Join a world: a chat message tells you the settings key, **J** by default.
+1. Install the mod next to your voice mod. Open the settings with **J**, the speech bubble icon in Simple Voice Chat's menu, or the Addons tab in Plasmo Voice's settings.
 2. On the **Speech** tab, press **Install the speech engine**. It downloads about 3 GB once (1.6 GB of it is the model), keeps going while you play, and says in chat when it is done. Everything goes into one folder, shared by all your Minecraft instances:
    - Windows: `%LOCALAPPDATA%\VoiceTranslateEngine`
    - Linux: `~/.local/share/voice-translate-engine`
@@ -49,6 +50,8 @@ No graphics card, or no wish to download anything? Pick **Groq** on the Speech t
 | Translation | Translator | Google, DeepL or an AI model, with keys and model names |
 | Display | Above heads / Panel | Where subtitles go; the panel can show everyone, only players off screen, or nobody |
 | Display | Show original, live drafts, copy to chat, text size, background, bubble distance | |
+| History | | Everything translated this session, newest first; copy or clear |
+| Players | | Turn translation off for single players |
 
 Keys, in Minecraft's controls under **Voice Translate**: open settings (**J**), turn translation on and off, open history (both unbound).
 
@@ -87,6 +90,7 @@ builds all six jars (26.1, 26.2, 26.3 × Fabric, NeoForge) into `dist/`. One tar
 - **Помнит, кто на каком языке говорит** — после нескольких фраз Whisper получает подсказку о языке игрока, и короткие фразы распознаются заметно точнее. Если игрок перешёл на другой язык, мод это заметит.
 - **Отсеивает выдумки Whisper** — никаких «Продолжение следует...» и «Субтитры сделал DimaTorzok» поверх игрока, который просто вздохнул.
 - **Выключение для отдельных игроков, история, копия в чат** — отключите перевод для друга, который говорит на вашем языке, пролистайте всё сказанное за сессию, скопируйте или дублируйте переводы в чат.
+- **Встроен в меню голосового мода** — кнопка рядом с иконками Simple Voice Chat и раздел Voice Translate во вкладке «Аддоны» в настройках Plasmo Voice с главными переключателями. Само окно настроек устроено как настройки Plasmo Voice и студия voice changer'а.
 - **Интерфейс на английском, русском и украинском**.
 
 ### 📦 Зависимости
@@ -97,7 +101,7 @@ builds all six jars (26.1, 26.2, 26.3 × Fabric, NeoForge) into `dist/`. One tar
 
 ### 🎮 С чего начать
 
-1. Поставьте мод рядом с голосовым модом и зайдите в мир: сообщение в чате подскажет клавишу настроек, по умолчанию **J**.
+1. Поставьте мод рядом с голосовым модом. Настройки открываются клавишей **J**, иконкой с облачками в меню Simple Voice Chat или со вкладки «Аддоны» в настройках Plasmo Voice.
 2. На вкладке **Речь** нажмите **Установить движок распознавания**. Один раз скачается около 3 ГБ (1,6 ГБ из них — модель), установка идёт, пока вы играете, и сообщит в чат, когда закончит. Всё лежит в одной папке, общей для всех сборок Minecraft:
    - Windows: `%LOCALAPPDATA%\VoiceTranslateEngine`
    - Linux: `~/.local/share/voice-translate-engine`
@@ -119,6 +123,8 @@ builds all six jars (26.1, 26.2, 26.3 × Fabric, NeoForge) into `dist/`. One tar
 | Перевод | Переводчик | Google, DeepL или ИИ-модель, с ключами и названием модели |
 | Отображение | Над головой / Панель | Где показывать субтитры; панель — для всех, только для тех, кого не видно, или скрыта |
 | Отображение | Оригинал, живые черновики, дублировать в чат, размер текста, фон, расстояние для облачков | |
+| История | | Всё переведённое за сессию, новое сверху; копировать или очистить |
+| Игроки | | Отключить перевод для отдельных игроков |
 
 Клавиши в управлении Minecraft, раздел **Voice Translate**: открыть настройки (**J**), включить и выключить перевод, открыть историю (обе без назначения).
 

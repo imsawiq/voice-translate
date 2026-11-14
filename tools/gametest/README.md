@@ -1,4 +1,4 @@
-Starts a real Minecraft 26.3 client with Simple Voice Chat and the built Fabric jar, creates a world, puts sample subtitles on screen, and takes a screenshot of the HUD, every settings tab and the history screen. Screenshots land in `build/run/clientGameTest/screenshots`.
+Starts a real Minecraft 26.3 client in Russian with Simple Voice Chat and the built Fabric jar, creates a world, adds sample translations to the history, and takes a screenshot of every settings page and of Simple Voice Chat's menu with the Voice Translate button. Screenshots land in `build/run/clientGameTest/screenshots`.
 
 ```
 cd tools/gametest

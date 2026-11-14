@@ -1,0 +1,14 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "org.sawiq.voicetranslate.mixin",
+  "plugin": "org.sawiq.voicetranslate.mixin.VoiceModMixins",
+  "compatibilityLevel": "${java}",
+  "client": [
+    "PlasmoAddonsTabMixin",
+    "SimpleVoiceChatMenuMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

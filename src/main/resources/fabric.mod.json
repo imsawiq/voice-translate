@@ -22,6 +22,9 @@
       "org.sawiq.voicetranslate.voice.svc.SimpleVoiceChatPlugin"
     ]
   },
+  "mixins": [
+    "voice-translate.mixins.json"
+  ],
   "depends": {
     "fabricloader": ">=${fabric_loader}",
     "fabric-api": "*",

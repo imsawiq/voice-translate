@@ -43,6 +43,12 @@ public final class PlasmoVoiceAddon implements AddonInitializer {
     public void onAddonInitialize() {
         this.voiceClient.getEventBus().register(this, AudioSourceWriteEvent.class, EventPriority.LOWEST, this::onSourceWrite);
         VoiceBridge.markPlasmoVoiceHooked();
+        try {
+            new PlasmoSettings().register(this.voiceClient.getAddonConfig(this));
+        } catch (RuntimeException exception) {
+            // Translation works without the settings section; only the menu entry is lost.
+            VoiceTranslate.LOGGER.error("Could not add Voice Translate to Plasmo Voice's settings", exception);
+        }
         VoiceTranslate.LOGGER.info("Listening to Plasmo Voice");
     }
 

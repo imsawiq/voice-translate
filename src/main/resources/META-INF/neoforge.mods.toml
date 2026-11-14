@@ -12,6 +12,9 @@ description = "${description}"
 ${icon_key} = "assets/voice-translate/icon.png"
 displayURL = "https://github.com/imsawiq/voice-translate"
 
+[[mixins]]
+config = "voice-translate.mixins.json"
+
 [[dependencies.${id}]]
 modId = "neoforge"
 type = "required"

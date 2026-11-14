@@ -1,87 +1,149 @@
 package org.sawiq.voicetranslate.client.ui;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.function.Supplier;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 import org.sawiq.voicetranslate.client.VoiceTranslateClient;
 import org.sawiq.voicetranslate.client.compat.ClientAccess;
 
 /**
- * The mod's settings, on four tabs. Choices take effect at once; text
- * fields such as keys are applied when the screen closes, so a half-typed
- * key is not sent to a service with every letter.
+ * Voice Translate's window: six pages under one set of tabs, in the same
+ * frame as the voice changer studio and Plasmo Voice's settings.
+ *
+ * <p>Choices take effect at once. Text fields such as keys are applied when
+ * the page changes or the window closes, so a half-typed key is not sent to a
+ * service with every letter.</p>
  */
 public final class SettingsScreen extends Screen {
-    private static final int TAB_WIDTH = 76;
-    private static final int TAB_GAP = 4;
-    private static final int TABS_TOP = 26;
-    private static final int CONTENT_TOP = 54;
-    private static final int FOOTER_BUTTON_WIDTH = 100;
+    /** The pages, in tab order. */
+    public enum Page {
+        GENERAL(GeneralTab::new),
+        SPEECH(SpeechTab::new),
+        TRANSLATION(TranslationTab::new),
+        DISPLAY(DisplayTab::new),
+        HISTORY(HistoryTab::new),
+        PLAYERS(PlayersTab::new);
 
-    /** Reopening the screen returns to the tab last used. */
-    private static int lastTab;
+        private final Supplier<SettingsTab> factory;
+
+        Page(Supplier<SettingsTab> factory) {
+            this.factory = factory;
+        }
+
+        private String key() {
+            return "voice-translate.tab." + name().toLowerCase(Locale.ROOT);
+        }
+    }
+
+    private static final int KEY_UP = 265;
+    private static final int KEY_DOWN = 264;
+    private static final int KEY_PAGE_UP = 266;
+    private static final int KEY_PAGE_DOWN = 267;
+    private static final int FOOTER_BUTTON_WIDTH = 150;
+
+    /** Reopening the window returns to the page last used. */
+    private static Page lastPage = Page.GENERAL;
 
     private final Screen parent;
-    private final List<SettingsTab> tabs = List.of(new GeneralTab(), new SpeechTab(), new TranslationTab(), new DisplayTab());
-    private FormLayout form;
+    private Page page;
+    private SettingsTab tab;
+    private SettingsList list;
+    private int keptScroll;
 
     public SettingsScreen(Screen parent) {
+        this(parent, lastPage);
+    }
+
+    public SettingsScreen(Screen parent, Page page) {
         super(Component.translatable("voice-translate.settings.title"));
         this.parent = parent;
+        this.page = page;
     }
 
     @Override
     protected void init() {
-        int tabsLeft = this.width / 2 - (this.tabs.size() * TAB_WIDTH + (this.tabs.size() - 1) * TAB_GAP) / 2;
-        for (int i = 0; i < this.tabs.size(); i++) {
-            int index = i;
-            Button tab = Button.builder(Component.translatable(this.tabs.get(i).titleKey()), pressed -> selectTab(index))
-                    .bounds(tabsLeft + i * (TAB_WIDTH + TAB_GAP), TABS_TOP, TAB_WIDTH, 20)
-                    .build();
-            tab.active = i != lastTab;
-            addRenderableWidget(tab);
+        lastPage = this.page;
+        List<ScreenFrame.Tab> tabs = new ArrayList<>();
+        for (Page each : Page.values()) {
+            tabs.add(new ScreenFrame.Tab(Component.translatable(each.key()), Component.translatable(each.key() + ".desc"),
+                    each == this.page, () -> open(each)));
         }
+        ScreenFrame.addTabs(tabs, this.width, this.font::width, this::addRenderableWidget);
 
-        this.form = new FormLayout(this::addRenderableWidget, this.font, this.width / 2, CONTENT_TOP);
+        if (this.tab == null) {
+            this.tab = this.page.factory.get();
+        }
+        this.list = new SettingsList(this.width, this::addRenderableWidget);
         SettingsTab.Context context = new SettingsTab.Context(VoiceTranslateClient.INSTANCE.config(), this.font,
-                this::rebuildWidgets, VoiceTranslateClient.INSTANCE::applySettings);
-        this.tabs.get(lastTab).build(this.form, context);
+                this::rebuildKeepingScroll, VoiceTranslateClient.INSTANCE::applySettings);
+        this.tab.build(this.list, context);
+        this.list.finish(this.height, this.keptScroll);
+        this.keptScroll = 0;
 
-        int footerY = this.height - 28;
-        int footerLeft = this.width / 2 - (FOOTER_BUTTON_WIDTH * 3 + TAB_GAP * 2) / 2;
-        addRenderableWidget(Button.builder(Component.translatable("voice-translate.history.open"),
-                        pressed -> ClientAccess.openScreen(new HistoryScreen(this)))
-                .bounds(footerLeft, footerY, FOOTER_BUTTON_WIDTH, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable("voice-translate.players.open"),
-                        pressed -> ClientAccess.openScreen(new PlayersScreen(this)))
-                .bounds(footerLeft + FOOTER_BUTTON_WIDTH + TAB_GAP, footerY, FOOTER_BUTTON_WIDTH, 20).build());
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), pressed -> onClose())
-                .bounds(footerLeft + (FOOTER_BUTTON_WIDTH + TAB_GAP) * 2, footerY, FOOTER_BUTTON_WIDTH, 20).build());
+                .bounds(this.width / 2 - FOOTER_BUTTON_WIDTH / 2, ScreenFrame.footerY(this.height), FOOTER_BUTTON_WIDTH,
+                        ScreenFrame.WIDGET_HEIGHT)
+                .build());
     }
 
-    private void selectTab(int index) {
+    private void open(Page next) {
         VoiceTranslateClient.INSTANCE.applySettings();
-        lastTab = index;
+        this.page = next;
+        this.tab = null;
+        rebuildWidgets();
+    }
+
+    /** A choice that shows or hides rows lays the page out again without jumping back to its top. */
+    private void rebuildKeepingScroll() {
+        this.keptScroll = this.list.scrollOffset();
         rebuildWidgets();
     }
 
     @Override
     public void tick() {
         super.tick();
-        if (this.form != null) {
-            this.form.tick();
+        if (this.list != null) {
+            this.list.tick();
         }
     }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        UiPaint paint = new UiPaint(graphics, this.font);
+        ScreenFrame.paintBackground(paint, this.width, this.height);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
-        graphics.centeredText(this.font, this.title, this.width / 2, 10, 0xFFFFFFFF);
-        if (this.form != null) {
-            this.form.draw(graphics);
+        ScreenFrame.paintChrome(paint, this.width, this.height, this.title);
+        this.list.paint(paint);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
+        if (this.list.scrollBy(-(int) Math.round(vertical * SettingsList.ROW_HEIGHT * 2))) {
+            return true;
         }
+        return super.mouseScrolled(mouseX, mouseY, horizontal, vertical);
+    }
+
+    @Override
+    public boolean keyPressed(KeyEvent event) {
+        if (getFocused() instanceof EditBox) {
+            return super.keyPressed(event);
+        }
+        int step = switch (event.key()) {
+            case KEY_UP -> -SettingsList.ROW_HEIGHT;
+            case KEY_DOWN -> SettingsList.ROW_HEIGHT;
+            case KEY_PAGE_UP -> -this.list.viewportHeight();
+            case KEY_PAGE_DOWN -> this.list.viewportHeight();
+            default -> 0;
+        };
+        return (step != 0 && this.list.scrollBy(step)) || super.keyPressed(event);
     }
 
     @Override
