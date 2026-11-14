@@ -31,6 +31,16 @@ MODEL_MEGABYTES = {
     "large-v3-turbo": 1620,
     "large-v3": 3090,
 }
+# Where each model lives on the Hugging Face Hub, as faster-whisper 1.2 names them.
+# The mod reads the same names to show which models are already downloaded.
+MODEL_REPOS = {
+    "tiny": "Systran/faster-whisper-tiny",
+    "base": "Systran/faster-whisper-base",
+    "small": "Systran/faster-whisper-small",
+    "medium": "Systran/faster-whisper-medium",
+    "large-v3-turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+    "large-v3": "Systran/faster-whisper-large-v3",
+}
 
 
 def add_nvidia_library_paths():
@@ -69,6 +79,10 @@ class Engine:
         self.compute_type = ""
         self.state = "idle"
         self.error = ""
+        # What was asked for last, whether or not it worked: the mod compares
+        # this with what it wants, so a request is never silently lost.
+        self.target_model = ""
+        self.target_device = ""
         self.download_megabytes = 0
         self.loading_thread = None
 
@@ -81,11 +95,13 @@ class Engine:
                 "model": self.model_name,
                 "device": self.device,
                 "compute_type": self.compute_type,
+                "target": self.target_model,
+                "target_device": self.target_device,
                 "error": self.error,
                 "progress": -1,
             }
         if result["state"] == "downloading" and self.download_megabytes > 0:
-            done = folder_megabytes(self.models_dir)
+            done = folder_megabytes(repo_folder(self.models_dir, self.target_model))
             result["progress"] = max(0, min(99, int(done * 100 / self.download_megabytes)))
         return result
 
@@ -97,14 +113,24 @@ class Engine:
     # --- loading --------------------------------------------------------------
 
     def load_async(self, model_name, device):
+        """Starts loading a model; False while another load is still running.
+
+        A download cannot be stopped halfway from inside the process, so a
+        busy engine refuses instead of queueing, and the mod restarts it when
+        it wants something else. Whatever was downloaded so far stays and is
+        resumed the next time that model is asked for.
+        """
         with self.state_lock:
             if self.state in ("loading", "downloading"):
-                return
+                return False
             self.state = "loading"
             self.error = ""
+            self.target_model = model_name
+            self.target_device = device
         self.loading_thread = threading.Thread(
             target=self._load, args=(model_name, device), name="model-loader", daemon=True)
         self.loading_thread.start()
+        return True
 
     def _load(self, model_name, device):
         try:
@@ -139,7 +165,13 @@ class Engine:
             self.set_state("error", str(exception))
 
     def _download(self, model_name, download_model):
-        self.download_megabytes = MODEL_MEGABYTES.get(model_name, 0) + folder_megabytes(self.models_dir)
+        """The model's folder, downloading it first only if it is not complete
+        on disk; a model that is there loads without touching the network."""
+        try:
+            return download_model(model_name, cache_dir=self.models_dir, local_files_only=True)
+        except Exception:
+            pass
+        self.download_megabytes = MODEL_MEGABYTES.get(model_name, 0)
         self.set_state("downloading")
         try:
             return download_model(model_name, cache_dir=self.models_dir)
@@ -213,6 +245,12 @@ def device_candidates(requested):
     return cuda + cpu
 
 
+def repo_folder(models_dir, model_name):
+    """Where the Hugging Face cache keeps one model: models--<owner>--<name>."""
+    repo = MODEL_REPOS.get(model_name, model_name)
+    return os.path.join(models_dir, "models--" + repo.replace("/", "--"))
+
+
 def folder_megabytes(path):
     total = 0
     for root, _, files in os.walk(path):
@@ -250,8 +288,8 @@ def make_handler(engine):
             body = self.rfile.read(length)
             if url.path == "/load":
                 request = json.loads(body or b"{}")
-                engine.load_async(str(request.get("model", "small")), str(request.get("device", "auto")))
-                self.reply(202, engine.status())
+                started = engine.load_async(str(request.get("model", "small")), str(request.get("device", "auto")))
+                self.reply(202 if started else 409, engine.status())
             elif url.path == "/transcribe":
                 self.transcribe(body, parse_qs(url.query))
             else:

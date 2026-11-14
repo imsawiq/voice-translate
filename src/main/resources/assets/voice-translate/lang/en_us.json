@@ -155,5 +155,12 @@
   "voice-translate.settings.own_voice.desc": "Translate your own microphone as well, so you can try the mod alone. Turn it off for normal play",
   "voice-translate.status.heard": "Last voice heard: %s, %s s ago.",
   "voice-translate.status.heard.nobody": "No voices heard yet. Your own voice is not translated unless you turn that on above.",
-  "voice-translate.status.engine": "Speech engine: %s"
+  "voice-translate.status.engine": "Speech engine: %s",
+  "voice-translate.unit.gb": "%s GB",
+  "voice-translate.category.models": "Downloaded models",
+  "voice-translate.models.none": "No model downloaded yet.",
+  "voice-translate.models.stored": "On disk (GB): %s. Green in the model button means downloaded.",
+  "voice-translate.models.clean": "Delete the others (%s GB)",
+  "voice-translate.models.clean_confirm": "Click again to delete %s GB",
+  "voice-translate.models.clean_none": "Nothing else to delete"
 }

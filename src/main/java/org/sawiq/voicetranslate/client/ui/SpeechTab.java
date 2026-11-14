@@ -2,8 +2,10 @@ package org.sawiq.voicetranslate.client.ui;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
 import org.sawiq.voicetranslate.VoiceTranslate;
@@ -13,6 +15,7 @@ import org.sawiq.voicetranslate.config.RecognitionSettings;
 import org.sawiq.voicetranslate.config.TranslateConfig;
 import org.sawiq.voicetranslate.engine.EngineInstaller;
 import org.sawiq.voicetranslate.engine.LocalEngine;
+import org.sawiq.voicetranslate.engine.ModelCache;
 import org.sawiq.voicetranslate.engine.PackageSet;
 
 /** Which service recognises speech, the local engine, and how speech is cut into sentences. */
@@ -20,8 +23,10 @@ final class SpeechTab implements SettingsTab {
     /** Removing deletes gigabytes of downloads, so it takes a second click within this time. */
     private static final long CONFIRM_WINDOW_MILLIS = 4_000L;
     private static final int BAR_HEIGHT = 4;
+    private static final int DOWNLOADED_COLOUR = 0x9CF29C;
 
     private long removeArmedUntil;
+    private long cleanUpArmedUntil;
 
     @Override
     public void build(SettingsList list, Context context) {
@@ -76,9 +81,7 @@ final class SpeechTab implements SettingsTab {
                 Component.translatable("voice-translate.settings.model.desc"),
                 Widgets.cycle(Component.translatable("voice-translate.settings.model"),
                         Arrays.asList(RecognitionSettings.LOCAL_MODELS), recognition.localModel,
-                        model -> "auto".equals(model)
-                                ? Component.translatable("voice-translate.settings.model.auto", engine.resolveModel("auto"))
-                                : Component.literal(model),
+                        model -> modelName(engine, model),
                         model -> {
                             recognition.localModel = model;
                             context.apply().run();
@@ -93,6 +96,84 @@ final class SpeechTab implements SettingsTab {
                             context.apply().run();
                         }));
         list.text(Component.translatable("voice-translate.engine.explain", downloadSize(engine)), UiPaint.DIM, 3);
+        buildStorage(list, engine);
+    }
+
+    /**
+     * A downloaded model in green; one that is not yet, with what it costs to
+     * download, so nobody starts three gigabytes by cycling the button.
+     */
+    private static Component modelName(LocalEngine engine, String model) {
+        if ("auto".equals(model)) {
+            return Component.translatable("voice-translate.settings.model.auto", engine.resolveModel("auto"));
+        }
+        if (ModelCache.isDownloaded(model)) {
+            return Component.literal(model).withColor(DOWNLOADED_COLOUR);
+        }
+        return Component.literal(model + " · ").append(Component.translatable("voice-translate.unit.gb",
+                String.format(Locale.ROOT, "%.1f", ModelCache.downloadMegabytes(model) / 1024.0)));
+    }
+
+    /** Which models take space, and a way to remove the ones not in use. */
+    private void buildStorage(SettingsList list, LocalEngine engine) {
+        list.category(Component.translatable("voice-translate.category.models"));
+        list.text(SpeechTab::storedModels, () -> UiPaint.TEXT, 2);
+        Button cleanUp = Button.builder(Component.empty(), pressed -> onCleanUp(engine))
+                .bounds(0, 0, SettingsList.CONTROL_WIDTH, SettingsList.WIDGET_HEIGHT).build();
+        list.row(cleanUp);
+        list.everyTick(() -> updateCleanUpButton(cleanUp, engine));
+    }
+
+    private static Component storedModels() {
+        List<ModelCache.Stored> stored = ModelCache.stored();
+        if (stored.isEmpty()) {
+            return Component.translatable("voice-translate.models.none");
+        }
+        StringBuilder names = new StringBuilder();
+        for (ModelCache.Stored model : stored) {
+            if (!names.isEmpty()) {
+                names.append(", ");
+            }
+            names.append(model.model()).append(" (")
+                    .append(String.format(Locale.ROOT, "%.1f", model.megabytes() / 1024.0)).append(')');
+        }
+        return Component.translatable("voice-translate.models.stored", names.toString());
+    }
+
+    private void onCleanUp(LocalEngine engine) {
+        long now = System.currentTimeMillis();
+        if (now >= this.cleanUpArmedUntil) {
+            this.cleanUpArmedUntil = now + CONFIRM_WINDOW_MILLIS;
+            return;
+        }
+        this.cleanUpArmedUntil = 0L;
+        Set<String> kept = keptModels(engine);
+        Thread cleaner = new Thread(() -> {
+            long freed = ModelCache.deleteAllExcept(kept);
+            VoiceTranslate.LOGGER.info("Deleted unused speech models, {} MB freed", freed);
+        }, "Voice Translate model clean-up");
+        cleaner.setDaemon(true);
+        cleaner.start();
+    }
+
+    private void updateCleanUpButton(Button button, LocalEngine engine) {
+        long megabytes = ModelCache.megabytesExcept(keptModels(engine));
+        boolean isArmed = System.currentTimeMillis() < this.cleanUpArmedUntil;
+        String size = String.format(Locale.ROOT, "%.1f", megabytes / 1024.0);
+        button.setMessage(megabytes == 0
+                ? Component.translatable("voice-translate.models.clean_none")
+                : Component.translatable(isArmed ? "voice-translate.models.clean_confirm" : "voice-translate.models.clean", size));
+        if (button.visible) {
+            button.active = megabytes > 0;
+        }
+    }
+
+    /** The model wanted and the one the engine has loaded; both may be in use right now. */
+    private static Set<String> keptModels(LocalEngine engine) {
+        Set<String> kept = new HashSet<>();
+        kept.add(engine.wantedModel());
+        kept.add(engine.status().model());
+        return kept;
     }
 
     private void buildCloud(SettingsList list, Context context) {

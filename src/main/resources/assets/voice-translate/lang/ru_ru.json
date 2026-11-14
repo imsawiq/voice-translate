@@ -155,5 +155,12 @@
   "voice-translate.settings.own_voice.desc": "Переводить и ваш микрофон, чтобы проверить мод в одиночку. В обычной игре выключите",
   "voice-translate.status.heard": "Последний голос: %s, %s с назад.",
   "voice-translate.status.heard.nobody": "Пока ни одного голоса. Ваш собственный голос не переводится, если не включить это выше.",
-  "voice-translate.status.engine": "Движок: %s"
+  "voice-translate.status.engine": "Движок: %s",
+  "voice-translate.unit.gb": "%s ГБ",
+  "voice-translate.category.models": "Скачанные модели",
+  "voice-translate.models.none": "Ни одна модель пока не скачана.",
+  "voice-translate.models.stored": "На диске (ГБ): %s. Зелёным в кнопке модели отмечены скачанные.",
+  "voice-translate.models.clean": "Удалить остальные (%s ГБ)",
+  "voice-translate.models.clean_confirm": "Нажмите ещё раз: удалить %s ГБ",
+  "voice-translate.models.clean_none": "Больше удалять нечего"
 }
