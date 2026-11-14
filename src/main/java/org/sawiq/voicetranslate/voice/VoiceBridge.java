@@ -14,6 +14,7 @@ import org.sawiq.voicetranslate.audio.VoiceIntake;
  */
 public final class VoiceBridge {
     private static volatile VoiceIntake intake;
+    private static volatile UUID ownId;
     private static volatile boolean isSimpleVoiceChatHooked;
     private static volatile boolean isPlasmoVoiceHooked;
 
@@ -29,11 +30,27 @@ public final class VoiceBridge {
     }
 
     /** Called on the voice mod's audio thread with another player's decoded voice. */
-    public static void deliver(UUID speakerId, String speakerName, short[] mono48k) {
+    public static void deliver(UUID speakerId, String speakerName, short[] mono, int sampleRate) {
         VoiceIntake target = intake;
         if (target != null) {
-            target.accept(speakerId, speakerName, mono48k);
+            target.accept(speakerId, speakerName, mono, sampleRate);
         }
+    }
+
+    /**
+     * The player's own microphone, for checking the mod alone. The intake
+     * drops it unless the player turned that on.
+     */
+    public static void deliverOwn(short[] mono, int sampleRate) {
+        UUID self = ownId;
+        if (self != null) {
+            deliver(self, "", mono, sampleRate);
+        }
+    }
+
+    /** Set on the game thread when the player joins or leaves a world. */
+    public static void setOwnId(UUID id) {
+        ownId = id;
     }
 
     public static void markSimpleVoiceChatHooked() {

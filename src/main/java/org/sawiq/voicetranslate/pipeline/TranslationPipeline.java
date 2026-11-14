@@ -72,6 +72,7 @@ public final class TranslationPipeline implements UtteranceListener, AutoCloseab
     private volatile PipelineServices services;
     private volatile Semaphore recognitionSlots = new Semaphore(1);
     private volatile ServiceException lastFailure;
+    private volatile long lastFailureAt;
     private volatile long averageLatencyMillis;
 
     /**
@@ -101,7 +102,7 @@ public final class TranslationPipeline implements UtteranceListener, AutoCloseab
     }
 
     public PipelineHealth health() {
-        return new PipelineHealth(this.lastFailure, this.averageLatencyMillis,
+        return new PipelineHealth(this.lastFailure, this.lastFailureAt, this.averageLatencyMillis,
                 this.translatedCount.get(), this.droppedCount.get());
     }
 
@@ -168,6 +169,7 @@ public final class TranslationPipeline implements UtteranceListener, AutoCloseab
             // A draft is a preview; only a lost sentence is worth telling the player about.
             if (utterance.isFinal()) {
                 this.lastFailure = exception;
+                this.lastFailureAt = System.currentTimeMillis();
                 this.board.remove(utterance.id());
                 this.onFailure.accept(exception);
             }

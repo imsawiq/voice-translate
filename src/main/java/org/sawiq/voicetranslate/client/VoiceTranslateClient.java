@@ -156,6 +156,20 @@ public final class VoiceTranslateClient {
 
     // --- Accessors for the HUD and screens ----------------------------------------
 
+    /** Who the voice mods delivered last, or null if nobody was heard yet. */
+    public VoiceIntake.Heard lastHeard() {
+        return this.intake.lastHeard();
+    }
+
+    /** A player's current name, or a short id when they are not on the tab list. */
+    public String nameOf(UUID player, String fallback) {
+        String name = this.players.nameOf(player);
+        if (!name.isEmpty()) {
+            return name;
+        }
+        return fallback.isEmpty() ? player.toString().substring(0, 8) : fallback;
+    }
+
     public CaptionBoard captions() {
         return this.captions;
     }
@@ -175,11 +189,7 @@ public final class VoiceTranslateClient {
 
     /** The player's current name, or what the voice mod called them, or a short id. */
     public String displayName(Caption caption) {
-        String name = this.players.nameOf(caption.speakerId());
-        if (!name.isEmpty()) {
-            return name;
-        }
-        return caption.speakerName().isEmpty() ? caption.speakerId().toString().substring(0, 8) : caption.speakerName();
+        return nameOf(caption.speakerId(), caption.speakerName());
     }
 
     // --- Internals --------------------------------------------------------------
@@ -187,7 +197,10 @@ public final class VoiceTranslateClient {
     /** Audio thread: whether this voice is worth cutting into sentences at all. */
     private boolean isTranslated(UUID speaker) {
         TranslateConfig current = this.config;
-        return current.enabled && this.players.isOtherPlayer(speaker) && !this.mutedPlayers.contains(speaker);
+        if (!current.enabled || this.mutedPlayers.contains(speaker)) {
+            return false;
+        }
+        return this.players.isOtherPlayer(speaker) || current.translateOwnVoice && this.players.isSelf(speaker);
     }
 
     private void onCaptionFinished(Caption caption) {
@@ -212,6 +225,7 @@ public final class VoiceTranslateClient {
 
     private void handleWorldChange(Minecraft client) {
         boolean isInWorld = client.player != null;
+        VoiceBridge.setOwnId(isInWorld ? client.player.getUUID() : null);
         if (isInWorld && !this.wasInWorld) {
             showWelcomeOnce();
         }

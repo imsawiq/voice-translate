@@ -28,7 +28,7 @@
   "voice-translate.status.voice.plasmo": "Listening to Plasmo Voice.",
   "voice-translate.status.voice.both": "Listening to Simple Voice Chat and Plasmo Voice.",
   "voice-translate.status.voice.none": "Neither Simple Voice Chat nor Plasmo Voice is installed: there is nothing to translate.",
-  "voice-translate.status.waiting": "Waiting for someone to speak.",
+  "voice-translate.status.waiting": "Ready. Waiting for someone to speak.",
   "voice-translate.status.working": "Translated %s sentences, about %s s after each one ends.",
   "voice-translate.status.failing": "Not working: %s",
   "voice-translate.settings.recognition": "Recognition",
@@ -150,5 +150,10 @@
   "voice-translate.glossary.none": "The game's names are used when translating English into another language; there is nothing to look up for the current target.",
   "voice-translate.players.hint": "Players switched off here are not recognised at all, which also saves your computer the work.",
   "voice-translate.menu.open": "Voice Translate",
-  "voice-translate.menu.open_full": "All Voice Translate settings"
+  "voice-translate.menu.open_full": "All Voice Translate settings",
+  "voice-translate.settings.own_voice": "My voice too (to try it)",
+  "voice-translate.settings.own_voice.desc": "Translate your own microphone as well, so you can try the mod alone. Turn it off for normal play",
+  "voice-translate.status.heard": "Last voice heard: %s, %s s ago.",
+  "voice-translate.status.heard.nobody": "No voices heard yet. Your own voice is not translated unless you turn that on above.",
+  "voice-translate.status.engine": "Speech engine: %s"
 }

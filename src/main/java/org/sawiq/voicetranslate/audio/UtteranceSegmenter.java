@@ -36,6 +36,7 @@ final class UtteranceSegmenter {
     private final UUID speakerId;
     private final UtteranceListener listener;
     private final Supplier<SegmenterSettings> settings;
+    private final RateConverter rateConverter = new RateConverter();
     private final Downsampler downsampler = new Downsampler();
     private final SampleBuffer preRoll = new SampleBuffer(PRE_ROLL_MILLIS * SAMPLES_PER_MILLI * 2, PRE_ROLL_MILLIS * SAMPLES_PER_MILLI * 4);
     private final SampleBuffer speech;
@@ -59,7 +60,8 @@ final class UtteranceSegmenter {
         this.speech = new SampleBuffer(4 * Downsampler.OUTPUT_RATE, maxSamples);
     }
 
-    synchronized void acceptFrame(short[] mono48k, String name, long now) {
+    /** @param sampleRate the rate the voice mod plays this voice at; 48 kHz for Simple Voice Chat */
+    synchronized void acceptFrame(short[] samples, int sampleRate, String name, long now) {
         if (name != null && !name.isEmpty()) {
             this.speakerName = name;
         }
@@ -69,6 +71,10 @@ final class UtteranceSegmenter {
         }
         this.lastFrameAt = now;
 
+        short[] mono48k = this.rateConverter.toVoiceRate(samples, sampleRate);
+        if (mono48k.length == 0) {
+            return;
+        }
         short[] frame = this.downsampler.process(mono48k);
         int frameMillis = Math.max(1, frame.length / SAMPLES_PER_MILLI);
         double level = Pcm.rmsDb(mono48k);
@@ -149,6 +155,7 @@ final class UtteranceSegmenter {
     private void finish() {
         this.isSpeaking = false;
         this.downsampler.reset();
+        this.rateConverter.reset();
         if (this.voicedMillis < MIN_VOICED_MILLIS) {
             if (this.hasSentDraft) {
                 this.listener.onDiscarded(this.speakerId, this.utteranceId);

@@ -28,6 +28,7 @@ public final class VoiceIntake implements AutoCloseable {
     private final Supplier<SegmenterSettings> settings;
     private final Predicate<UUID> isWanted;
     private final ScheduledExecutorService timer;
+    private volatile Heard lastHeard;
 
     /**
      * @param isWanted decides, per speaker, whether their voice is worth
@@ -47,15 +48,17 @@ public final class VoiceIntake implements AutoCloseable {
     }
 
     /**
-     * One decoded frame of another player's voice.
+     * One decoded frame of a player's voice.
      *
      * @param speakerName the name if the voice mod knows it, else empty
-     * @param mono48k     48 kHz mono samples; not kept, so the caller may reuse the array
+     * @param samples     mono samples; not kept, so the caller may reuse the array
+     * @param sampleRate  their rate: 48 kHz for Simple Voice Chat, the server's choice for Plasmo Voice
      */
-    public void accept(UUID speakerId, String speakerName, short[] mono48k) {
-        if (speakerId == null || mono48k.length == 0 || !this.isWanted.test(speakerId)) {
+    public void accept(UUID speakerId, String speakerName, short[] samples, int sampleRate) {
+        if (speakerId == null || samples.length == 0 || !this.isWanted.test(speakerId)) {
             return;
         }
+        this.lastHeard = new Heard(speakerId, speakerName, System.currentTimeMillis());
         UtteranceSegmenter segmenter = this.segmenters.get(speakerId);
         if (segmenter == null) {
             if (this.segmenters.size() >= MAX_SPEAKERS) {
@@ -64,7 +67,19 @@ public final class VoiceIntake implements AutoCloseable {
             segmenter = this.segmenters.computeIfAbsent(speakerId,
                     id -> new UtteranceSegmenter(id, this.listener, this.settings));
         }
-        segmenter.acceptFrame(mono48k, speakerName, System.currentTimeMillis());
+        segmenter.acceptFrame(samples, sampleRate, speakerName, System.currentTimeMillis());
+    }
+
+    /** Who was heard last and when, so the settings can show that voices arrive at all; null before anyone. */
+    public Heard lastHeard() {
+        return this.lastHeard;
+    }
+
+    /**
+     * @param speakerName as the voice mod gave it, possibly empty
+     * @param at          epoch millis
+     */
+    public record Heard(UUID speakerId, String speakerName, long at) {
     }
 
     /** Forgets everyone, for leaving a server. */

@@ -16,6 +16,8 @@ public final class TranslateConfig {
     public Set<UUID> mutedPlayers = new LinkedHashSet<>();
     /** The one-time hint about the settings key has been shown. */
     public boolean hasSeenWelcome = false;
+    /** Also translate the player's own microphone, so the mod can be tried out alone. */
+    public boolean translateOwnVoice = false;
 
     /** Repairs what a hand-edited or older file left missing or out of range. */
     public TranslateConfig sanitize() {

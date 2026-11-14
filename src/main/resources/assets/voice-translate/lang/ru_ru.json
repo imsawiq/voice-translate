@@ -28,7 +28,7 @@
   "voice-translate.status.voice.plasmo": "Слушаю Plasmo Voice.",
   "voice-translate.status.voice.both": "Слушаю Simple Voice Chat и Plasmo Voice.",
   "voice-translate.status.voice.none": "Не установлен ни Simple Voice Chat, ни Plasmo Voice: переводить нечего.",
-  "voice-translate.status.waiting": "Жду, пока кто-нибудь заговорит.",
+  "voice-translate.status.waiting": "Готово. Жду, пока кто-нибудь заговорит.",
   "voice-translate.status.working": "Переведено фраз: %s, примерно через %s с после конца каждой.",
   "voice-translate.status.failing": "Не работает: %s",
   "voice-translate.settings.recognition": "Распознавание",
@@ -150,5 +150,10 @@
   "voice-translate.glossary.none": "Игровые названия подставляются при переводе с английского на другой язык; для текущего языка подставлять нечего.",
   "voice-translate.players.hint": "Отключённые здесь игроки вообще не распознаются, это ещё и экономит ресурсы компьютера.",
   "voice-translate.menu.open": "Voice Translate",
-  "voice-translate.menu.open_full": "Все настройки Voice Translate"
+  "voice-translate.menu.open_full": "Все настройки Voice Translate",
+  "voice-translate.settings.own_voice": "Мой голос тоже (проверка)",
+  "voice-translate.settings.own_voice.desc": "Переводить и ваш микрофон, чтобы проверить мод в одиночку. В обычной игре выключите",
+  "voice-translate.status.heard": "Последний голос: %s, %s с назад.",
+  "voice-translate.status.heard.nobody": "Пока ни одного голоса. Ваш собственный голос не переводится, если не включить это выше.",
+  "voice-translate.status.engine": "Движок: %s"
 }

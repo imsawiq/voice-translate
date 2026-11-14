@@ -40,6 +40,10 @@ final class OnlinePlayers {
         return !id.equals(this.self) && this.names.containsKey(id);
     }
 
+    boolean isSelf(UUID id) {
+        return id.equals(this.self);
+    }
+
     String nameOf(UUID id) {
         return this.names.getOrDefault(id, "");
     }
