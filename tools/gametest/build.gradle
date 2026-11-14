@@ -1,0 +1,34 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version '1.17.11'
+}
+
+repositories {
+    mavenCentral()
+    exclusiveContent {
+        forRepository { maven { url = "https://api.modrinth.com/maven" } }
+        filter { includeGroup "maven.modrinth" }
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:26.3"
+    implementation "net.fabricmc:fabric-loader:0.19.3"
+    implementation "net.fabricmc.fabric-api:fabric-api:0.161.0+26.3"
+    // The jar under test, built first with build-all.bat or :26.3.x-fabric:buildAndCollect.
+    implementation fileTree("../../dist") { include "voice-translate-fabric-*+26.3.jar"; exclude "*-sources.jar" }
+    runtimeOnly "maven.modrinth:simple-voice-chat:fabric-2.6.23+26.3"
+}
+
+fabricApi {
+    configureTests {
+        createSourceSet = true
+        modId = "vtcheck"
+        enableGameTests = false
+        enableClientGameTests = true
+        eula = true
+    }
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(25)
+}

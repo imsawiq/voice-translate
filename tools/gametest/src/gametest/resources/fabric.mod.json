@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "vtcheck",
+  "version": "1",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-client-gametest": ["check.VoiceTranslateCheck"]
+  }
+}
