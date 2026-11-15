@@ -64,7 +64,9 @@ public final class EngineInstaller {
     private static final String RESOURCE_FOLDER = "/voice-translate-engine/";
     private static final List<String> BUNDLED_FILES = List.of(
             "vt_engine.py", "requirements-cuda.txt", "requirements-cpu.txt",
-            "vt_voice.py", "requirements-voice-cuda.txt", "requirements-voice-cpu.txt");
+            "vt_voice.py", "requirements-voice.txt",
+            "openvoice/__init__.py", "openvoice/attentions.py", "openvoice/commons.py", "openvoice/models.py",
+            "openvoice/modules.py", "openvoice/transforms.py", "openvoice/LICENSE", "openvoice/NOTICE");
 
     private final EngineComponent component;
     private volatile Progress progress;
@@ -114,7 +116,8 @@ public final class EngineInstaller {
 
     /** Whether there is an NVIDIA card that could run Whisper but its libraries are not installed. */
     public boolean canAddGpuLibraries() {
-        return isInstalled() && this.hardware == PackageSet.CUDA && packageSet() == PackageSet.CPU;
+        return this.component == EngineComponent.SPEECH && isInstalled()
+                && this.hardware == PackageSet.CUDA && packageSet() == PackageSet.CPU;
     }
 
     /** The install that just ended, once. */
@@ -201,7 +204,9 @@ public final class EngineInstaller {
                 if (input == null) {
                     throw new IOException(name + " is missing from the mod jar");
                 }
-                Files.copy(input, EnginePaths.engineDirectory().resolve(name), StandardCopyOption.REPLACE_EXISTING);
+                Path target = EnginePaths.engineDirectory().resolve(name);
+                Files.createDirectories(target.getParent());
+                Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING);
             }
         }
     }
@@ -218,16 +223,11 @@ public final class EngineInstaller {
                 Files.deleteIfExists(archive);
             }
             refreshBundledFiles();
+            dropReplacedVoiceEngine();
 
             String environment = EnginePaths.engineDirectory().relativize(this.component.environmentDirectory()).toString();
             runUv("python", List.of("venv", "--python", EnginePaths.PYTHON_VERSION, "--allow-existing", environment));
-            PackageSet packages = this.requested != null ? this.requested : installedPackageSet().orElse(null);
-            if (packages == null) {
-                if (this.hardware == null) {
-                    this.hardware = PackageSet.detect();
-                }
-                packages = defaultPackages();
-            }
+            PackageSet packages = this.requested != null ? this.requested : installedPackageSet().orElseGet(this::defaultPackages);
             List<String> arguments = new ArrayList<>(List.of("pip", "install",
                     "--python", this.component.pythonForInstall().toString()));
             arguments.addAll(this.component.installArguments());
@@ -247,6 +247,23 @@ public final class EngineInstaller {
             finish(new Progress(State.FAILED, "", -1, "cancelled"));
         } finally {
             this.child = null;
+        }
+    }
+
+    /**
+     * Voice copying used to be Chatterbox, about 6 GB of CUDA PyTorch and
+     * models that the new engine does not use; an update clears them out
+     * rather than installing next to them.
+     */
+    private void dropReplacedVoiceEngine() throws IOException {
+        if (this.component != EngineComponent.VOICE) {
+            return;
+        }
+        Optional<String> installed = installedProperty("version");
+        if (installed.isPresent() && installed.get().startsWith("1.")) {
+            VoiceTranslate.LOGGER.info("Removing the old Chatterbox voice engine before installing voice copying");
+            deleteTree(this.component.environmentDirectory());
+            deleteTree(this.component.modelsDirectory());
         }
     }
 
@@ -355,15 +372,9 @@ public final class EngineInstaller {
         return new Progress(isInstalled ? State.INSTALLED : State.NOT_INSTALLED, "", -1, "");
     }
 
-    /**
-     * The light set for the base engine everywhere; voice copying takes the
-     * graphics card when there is one, as it is far too slow without.
-     */
+    /** The light processor set; NVIDIA's libraries only ever come on request. */
     private PackageSet defaultPackages() {
-        if (this.component == EngineComponent.SPEECH) {
-            return PackageSet.CPU;
-        }
-        return this.hardware;
+        return PackageSet.CPU;
     }
 
     private Optional<PackageSet> installedPackageSet() {

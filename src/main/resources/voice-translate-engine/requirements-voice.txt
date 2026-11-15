@@ -1,0 +1,14 @@
+# Voice copying runs on the processor, so PyTorch's small CPU build is enough.
+# PyTorch's index carries no upload dates, so everything is pinned instead.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.6.0+cpu ; sys_platform != 'darwin'
+torch==2.6.0 ; sys_platform == 'darwin'
+torchaudio==2.6.0+cpu ; sys_platform != 'darwin'
+torchaudio==2.6.0 ; sys_platform == 'darwin'
+wavmark==0.0.3
+librosa==1.0.1
+resampy==0.4.3
+numba==0.68.1
+scipy==1.18.1
+numpy==2.5.4
+huggingface-hub==2.4.0

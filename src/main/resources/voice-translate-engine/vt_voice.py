@@ -1,15 +1,20 @@
-"""Voice Translate voice engine.
+"""Voice Translate voice copying engine.
 
-Speaks translated text in the voice of the person who said it, with
-Chatterbox Multilingual. A separate process with its own Python environment:
-Chatterbox needs one exact version of PyTorch, whose CUDA libraries clash with
-the ones the speech engine uses.
+Turns speech a Piper voice said into the voice of the player whose words it
+is, with OpenVoice V2's tone colour converter, and marks the result with
+WavMark, the inaudible watermark OpenVoice itself puts on the voices it
+copies, so a copied voice can always be told apart from a real recording.
+
+A separate process with its own Python environment: it needs PyTorch, which
+the light speech engine does without. Runs on the processor, faster than
+real time.
 
 Endpoints:
-  GET  /status  what the engine is doing
-  POST /speak   JSON {"text", "language", "speaker", "reference"}; reference is
-                base64 16 kHz mono PCM16 of the speaker, sent once per new
-                version of the speaker id. Answers 48 kHz mono PCM16.
+  GET  /status   what the engine is doing
+  POST /convert  JSON {"audio", "rate", "speaker", "reference"}: audio is
+                 base64 mono PCM16 at rate, reference base64 16 kHz mono
+                 PCM16 of the speaker, prepared once per speaker id.
+                 Answers 48 kHz mono PCM16.
 """
 
 import argparse
@@ -18,20 +23,28 @@ import collections
 import json
 import os
 import sys
-import tempfile
 import threading
 import time
 import traceback
-import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 OUTPUT_RATE = 48000
 REFERENCE_RATE = 16000
 MAX_BODY_BYTES = 8 * 1024 * 1024
-MAX_TEXT_CHARACTERS = 600
-MAX_CACHED_VOICES = 24
-MODEL_MEGABYTES = 3200
+MAX_CACHED_VOICES = 32
+CONVERTER_REPO = "myshell-ai/OpenVoiceV2"
+CONVERTER_FILES = ("converter/config.json", "converter/checkpoint.pth")
+WATERMARK_REPO = "M4869/WavMark"
+WATERMARK_FILE = "step59000_snr39.99_pesq4.35_BERP_none0.30_mean1.81_std1.81.model.pkl"
+DOWNLOAD_MEGABYTES = 140
+# OpenVoice marks its copies with this message; so do we.
+WATERMARK_MESSAGE = "default"
+WATERMARK_RATE = 16000
+WATERMARK_CHUNK = 16000
+TAU = 0.3
 
 
 class VoiceEngine:
@@ -39,20 +52,19 @@ class VoiceEngine:
         self.models_dir = models_dir
         self.lock = threading.Lock()
         self.state_lock = threading.Lock()
-        self.model = None
-        self.default_conditionals = None
+        self.converter = None
+        self.config = None
+        self.watermarker = None
         self.voices = collections.OrderedDict()
         self.state = "idle"
-        self.device = ""
         self.error = ""
-        self.downloading = False
 
     def status(self):
         with self.state_lock:
-            result = {"state": self.state, "device": self.device, "error": self.error, "progress": -1}
+            result = {"state": self.state, "device": "cpu", "error": self.error, "progress": -1}
         if result["state"] == "downloading":
             done = folder_megabytes(self.models_dir)
-            result["progress"] = max(0, min(99, int(done * 100 / MODEL_MEGABYTES)))
+            result["progress"] = max(0, min(99, int(done * 100 / DOWNLOAD_MEGABYTES)))
         return result
 
     def set_state(self, state, error=""):
@@ -60,95 +72,166 @@ class VoiceEngine:
             self.state = state
             self.error = error
 
-    def load_async(self, device):
+    def load_async(self):
         with self.state_lock:
             if self.state in ("loading", "downloading", "ready"):
                 return
             self.state = "loading"
-        threading.Thread(target=self._load, args=(device,), name="voice-loader", daemon=True).start()
+        threading.Thread(target=self._load, name="voice-loader", daemon=True).start()
 
-    def _load(self, requested):
+    def _load(self):
         try:
             import torch
-            from chatterbox.mtl_tts import ChatterboxMultilingualTTS
+            from huggingface_hub import hf_hub_download
+            from openvoice.models import SynthesizerTrn
+            import wavmark.models.my_model as wavmark_model
 
-            device = "cuda" if requested in ("auto", "cuda") and torch.cuda.is_available() else "cpu"
-            if not self._is_downloaded():
-                self.set_state("downloading")
-            model = ChatterboxMultilingualTTS.from_pretrained(device=device)
-            self.set_state("loading")
+            torch.set_num_threads(cpu_threads())
+            paths = self._download(hf_hub_download)
+            with open(paths[CONVERTER_FILES[0]], encoding="utf-8") as handle:
+                config = json.load(handle)
+            converter = SynthesizerTrn(0, config["data"]["filter_length"] // 2 + 1, n_speakers=0, **config["model"])
+            # Only weights are read from the checkpoints, never code.
+            state = torch.load(paths[CONVERTER_FILES[1]], map_location="cpu", weights_only=True)
+            converter.load_state_dict(state["model"], strict=False)
+            converter.eval()
+            # The same model wavmark.load_model() builds, read from the file fetched above.
+            watermarker = wavmark_model.Model(16000, num_bit=32, n_fft=1000, hop_length=400, num_layers=8)
+            watermarker.load_state_dict(torch.load(paths[WATERMARK_FILE], map_location="cpu", weights_only=True),
+                                        strict=True)
+            watermarker.eval()
             with self.lock:
-                self.model = model
-                self.default_conditionals = model.conds
-                # The first generation compiles kernels; do it before a player waits for it.
-                model.generate("Hello.", language_id="en")
-            with self.state_lock:
-                self.device = device
-                self.state = "ready"
-                self.error = ""
-            log("voice model ready on %s" % device)
+                self.converter = converter
+                self.config = config
+                self.watermarker = watermarker
+                silence = torch.zeros(config["data"]["sampling_rate"])
+                self._convert(silence, self._embedding(silence), self._embedding(silence))
+            self.set_state("ready")
+            log("voice copying ready")
         except Exception as exception:
             traceback.print_exc()
             self.set_state("error", str(exception))
 
-    def _is_downloaded(self):
-        return folder_megabytes(self.models_dir) > MODEL_MEGABYTES * 0.9
+    def _download(self, hf_hub_download):
+        """Every file's local path, downloading only what is not on disk yet."""
+        wanted = [(CONVERTER_REPO, name) for name in CONVERTER_FILES] + [(WATERMARK_REPO, WATERMARK_FILE)]
+        paths = {}
+        for repo, name in wanted:
+            try:
+                paths[name] = hf_hub_download(repo, name, local_files_only=True)
+            except Exception:
+                self.set_state("downloading")
+                paths[name] = hf_hub_download(repo, name)
+        self.set_state("loading")
+        return paths
 
-    def speak(self, text, language, speaker, reference):
+    def convert(self, pcm, rate, speaker, reference):
+        import numpy
         import torch
-        import torchaudio.functional as audio_functional
 
-        text = text.strip()[:MAX_TEXT_CHARACTERS]
+        audio = resample(torch.from_numpy(to_float(pcm)), rate, self.sampling_rate())
         with self.lock:
-            if self.model is None:
+            if self.converter is None:
                 raise NotReady()
-            conditionals = self._conditionals_for(speaker, reference)
-            self.model.conds = conditionals
-            # Guidance lower than usual: the reference is often in another
-            # language, and full guidance carries its accent into this one.
-            wav = self.model.generate(text, language_id=language, cfg_weight=0.3, exaggeration=0.5)
-            sample_rate = self.model.sr
-        wav = wav.detach().float().cpu()
-        if wav.dim() > 1:
-            wav = wav.mean(dim=0)
-        wav = audio_functional.resample(wav, sample_rate, OUTPUT_RATE)
-        peak = float(wav.abs().max()) if wav.numel() > 0 else 0.0
-        if peak > 0.99:
-            wav = wav * (0.99 / peak)
-        return (wav.clamp(-1.0, 1.0) * 32767.0).to(torch.int16).numpy().tobytes()
+            target = self._voice_of(speaker, reference)
+            if target is None:
+                raise ValueError("no reference for this speaker yet")
+            copied = self._convert(audio, self._embedding(audio), target)
+            peak = float(copied.abs().max()) if copied.numel() else 0.0
+            if peak > 0:
+                copied = copied * (0.9 / peak)
+            # WavMark works on 16 kHz audio; marked at that rate, it survives
+            # the way to 48 kHz and the voice mod's Opus.
+            marked = self._watermark(resample(copied, self.sampling_rate(), WATERMARK_RATE))
+        samples = resample(marked, WATERMARK_RATE, OUTPUT_RATE).numpy()
+        return (numpy.clip(samples, -1.0, 1.0) * 32767).astype("<i2").tobytes()
 
-    def _conditionals_for(self, speaker, reference):
-        """A speaker's voice, prepared once from their reference and kept by id."""
-        if speaker and speaker in self.voices:
+    def sampling_rate(self):
+        return self.config["data"]["sampling_rate"] if self.config else 22050
+
+    def _voice_of(self, speaker, reference):
+        """A player's tone colour, worked out once from their reference and kept by id."""
+        import torch
+        if speaker in self.voices:
             self.voices.move_to_end(speaker)
             return self.voices[speaker]
-        if not speaker or not reference:
-            return self.default_conditionals
-        path = write_wav(reference, REFERENCE_RATE)
-        try:
-            self.model.prepare_conditionals(path, exaggeration=0.5)
-        finally:
-            os.remove(path)
-        conditionals = self.model.conds
-        self.voices[speaker] = conditionals
+        if not reference:
+            return None
+        audio = resample(torch.from_numpy(to_float(reference)), REFERENCE_RATE, self.sampling_rate())
+        embedding = self._embedding(audio)
+        self.voices[speaker] = embedding
         while len(self.voices) > MAX_CACHED_VOICES:
             self.voices.popitem(last=False)
-        return conditionals
+        return embedding
+
+    def _embedding(self, audio):
+        import torch
+        with torch.no_grad():
+            return self.converter.ref_enc(self._spectrogram(audio).transpose(1, 2)).unsqueeze(-1)
+
+    def _convert(self, audio, source, target):
+        import torch
+        with torch.no_grad():
+            spectrogram = self._spectrogram(audio)
+            lengths = torch.LongTensor([spectrogram.size(-1)])
+            out = self.converter.voice_conversion(spectrogram, lengths, sid_src=source, sid_tgt=target, tau=TAU)[0]
+        return out[0, 0].float()
+
+    def _spectrogram(self, audio):
+        """The linear spectrogram OpenVoice was trained on, as its mel_processing makes it."""
+        import torch
+        data = self.config["data"]
+        n_fft, hop, window = data["filter_length"], data["hop_length"], data["win_length"]
+        y = torch.nn.functional.pad(audio.view(1, 1, -1), ((n_fft - hop) // 2, (n_fft - hop) // 2), mode="reflect")
+        spectrum = torch.stft(y.view(1, -1), n_fft, hop_length=hop, win_length=window,
+                              window=torch.hann_window(window), center=False, return_complex=True)
+        return torch.sqrt(spectrum.real.pow(2) + spectrum.imag.pow(2) + 1e-6)
+
+    def _watermark(self, audio16k):
+        """WavMark laid out as OpenVoice's ToneColorConverter.add_watermark
+        does it: 32 bits of the message in every other second."""
+        import torch
+        bits = message_bits(WATERMARK_MESSAGE)
+        audio = audio16k.clone()
+        for n in range(len(bits) // 32):
+            start = 2 * n * WATERMARK_CHUNK
+            chunk = audio[start:start + WATERMARK_CHUNK]
+            if chunk.numel() != WATERMARK_CHUNK:
+                break
+            with torch.no_grad():
+                marked = self.watermarker.encode(chunk[None], torch.FloatTensor(bits[n * 32:(n + 1) * 32])[None])
+            audio[start:start + WATERMARK_CHUNK] = marked.squeeze()
+        return audio
 
 
 class NotReady(Exception):
     pass
 
 
-def write_wav(pcm, sample_rate):
-    handle, path = tempfile.mkstemp(suffix=".wav")
-    os.close(handle)
-    with wave.open(path, "wb") as target:
-        target.setnchannels(1)
-        target.setsampwidth(2)
-        target.setframerate(sample_rate)
-        target.writeframes(pcm)
-    return path
+def message_bits(message, pad_len=8):
+    """OpenVoice's utils.string_to_bits, flattened: pad_len bytes of ASCII,
+    cut or padded with spaces, 8 bits each."""
+    rows = [[int(bit) for bit in bin(ord(character))[2:].zfill(8)] for character in message[:pad_len]]
+    rows.extend([[0, 0, 1, 0, 0, 0, 0, 0]] * (pad_len - len(rows)))
+    return [bit for row in rows for bit in row]
+
+
+def cpu_threads():
+    """Leaves most of the processor to the game."""
+    return max(1, min(4, (os.cpu_count() or 4) // 3))
+
+
+def to_float(pcm):
+    import numpy
+    return numpy.frombuffer(pcm, dtype="<i2").astype(numpy.float32) / 32768.0
+
+
+def resample(samples, source_rate, target_rate):
+    """A band-limited resample, so the watermark is not smeared on the way."""
+    import torchaudio.functional
+    if source_rate == target_rate or samples.numel() == 0:
+        return samples
+    return torchaudio.functional.resample(samples, source_rate, target_rate)
 
 
 def folder_megabytes(path):
@@ -185,16 +268,16 @@ def make_handler(engine):
                 self.reply_json(413, {"error": "body too large"})
                 return
             body = self.rfile.read(length)
-            if urlparse(self.path).path != "/speak":
+            if urlparse(self.path).path != "/convert":
                 self.reply_json(404, {"error": "not found"})
                 return
             try:
                 request = json.loads(body or b"{}")
                 reference = request.get("reference") or ""
-                pcm = engine.speak(str(request.get("text", "")), str(request.get("language", "en")),
-                                   str(request.get("speaker", "")),
-                                   base64.b64decode(reference) if reference else b"")
-                self.reply_bytes(200, pcm)
+                pcm = engine.convert(base64.b64decode(request.get("audio", "")), int(request.get("rate", 22050)),
+                                     str(request.get("speaker", "")),
+                                     base64.b64decode(reference) if reference else b"")
+                self.reply(200, pcm, "application/octet-stream")
             except NotReady:
                 self.reply_json(503, engine.status())
             except ValueError as exception:
@@ -205,9 +288,6 @@ def make_handler(engine):
 
         def reply_json(self, code, payload):
             self.reply(code, json.dumps(payload, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
-
-        def reply_bytes(self, code, data):
-            self.reply(code, data, "application/octet-stream")
 
         def reply(self, code, data, content_type):
             self.send_response(code)
@@ -255,7 +335,6 @@ def main():
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--models", required=True)
     parser.add_argument("--parent-pid", type=int, default=0)
-    parser.add_argument("--device", default="auto")
     arguments = parser.parse_args()
 
     os.makedirs(arguments.models, exist_ok=True)
@@ -267,7 +346,7 @@ def main():
     watch_parent(arguments.parent_pid)
 
     engine = VoiceEngine(arguments.models)
-    engine.load_async(arguments.device)
+    engine.load_async()
     server = ThreadingHTTPServer(("127.0.0.1", arguments.port), make_handler(engine))
     server.daemon_threads = True
     log("listening on 127.0.0.1:%d" % arguments.port)

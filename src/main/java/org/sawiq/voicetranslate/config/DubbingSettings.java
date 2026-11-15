@@ -6,7 +6,7 @@ public final class DubbingSettings {
     public boolean dubOthers = false;
     /**
      * In each player's own voice, copied from their speech by the optional
-     * heavy engine, rather than a Piper voice that matches theirs.
+     * voice copying engine, rather than a Piper voice that matches theirs.
      */
     public boolean cloneVoices = false;
     /** How loud the original voice stays while it is being dubbed, percent. */
@@ -17,16 +17,11 @@ public final class DubbingSettings {
     public boolean translateMySpeech = false;
     /** ISO code the player's speech is translated into. */
     public String mySpeechLanguage = "en";
-    /** Where the voice copying engine runs: "auto", "cuda" or "cpu". */
-    public String device = "auto";
 
     void sanitize() {
         this.originalVolume = Math.clamp(this.originalVolume, 0, 100);
         this.dubVolume = Math.clamp(this.dubVolume, 10, 200);
         this.mySpeechLanguage = RecognitionSettings.orDefault(this.mySpeechLanguage, "en");
-        if (!"cuda".equals(this.device) && !"cpu".equals(this.device)) {
-            this.device = "auto";
-        }
     }
 
     /** Whether anything is spoken, which takes the speech engine's voices. */

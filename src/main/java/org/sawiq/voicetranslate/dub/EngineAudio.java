@@ -11,24 +11,26 @@ import java.time.Duration;
 import org.sawiq.voicetranslate.net.Http;
 import org.sawiq.voicetranslate.net.ServiceException;
 
-/** POST /speak to an engine on this computer, which answers with 48 kHz mono PCM16. */
-final class SpeakRequest {
+/** A POST to an engine on this computer that answers with 48 kHz mono PCM16. */
+final class EngineAudio {
     private static final Duration TIMEOUT = Duration.ofSeconds(60);
     private static final int NO_VOICE_FOR_LANGUAGE = 422;
     private static final int NOT_READY = 503;
 
-    private SpeakRequest() {
+    private EngineAudio() {
     }
 
     /**
      * @param address the engine's base URL, or null while it is not running
+     * @param path    the endpoint, such as /speak
      * @param engine  how the failures name the engine, for the log and the action bar
+     * @return the audio; empty when the engine has no voice for the language
      */
-    static short[] send(String address, JsonObject body, String engine) throws ServiceException {
+    static short[] post(String address, String path, JsonObject body, String engine) throws ServiceException {
         if (address == null) {
             throw new ServiceException(ServiceException.Kind.NOT_READY, "The " + engine + " is not running");
         }
-        HttpRequest request = HttpRequest.newBuilder(URI.create(address + "/speak"))
+        HttpRequest request = HttpRequest.newBuilder(URI.create(address + path))
                 .timeout(TIMEOUT)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString()))

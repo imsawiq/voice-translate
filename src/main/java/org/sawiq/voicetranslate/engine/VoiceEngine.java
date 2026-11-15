@@ -17,14 +17,14 @@ import org.sawiq.voicetranslate.VoiceTranslate;
 import org.sawiq.voicetranslate.net.Http;
 
 /**
- * Keeps the voice engine, which speaks translations, running while dubbing
- * or translating the player's own speech is on, and stopped otherwise.
+ * Keeps the voice copying engine running while something is spoken and
+ * voice copying is on, and stopped otherwise.
  *
  * <p>Its states are the speech engine's, so the screens describe both the
- * same way. There is one model and nothing to switch; a device change
- * restarts the process.</p>
+ * same way. There is one model, on the processor, and nothing to switch.</p>
  */
 public final class VoiceEngine implements AutoCloseable {
+    private static final String MODEL = "OpenVoice";
     private static final Duration STATUS_TIMEOUT = Duration.ofSeconds(2);
     private static final long START_GRACE_MILLIS = 120_000L;
     private static final long RETRY_AFTER_FAILURE_MILLIS = 30_000L;
@@ -35,8 +35,6 @@ public final class VoiceEngine implements AutoCloseable {
     private final ScheduledExecutorService poller;
     private volatile LocalEngine.Status status = LocalEngine.Status.of(LocalEngine.Phase.STOPPED);
     private volatile boolean isWanted;
-    private volatile String wantedDevice = "auto";
-    private volatile String runningDevice = "";
     private volatile long lastFailureAt;
     private volatile long lastDiskCheck;
 
@@ -58,9 +56,8 @@ public final class VoiceEngine implements AutoCloseable {
         return this.status;
     }
 
-    public void want(boolean shouldRun, String device) {
+    public void want(boolean shouldRun) {
         this.isWanted = shouldRun;
-        this.wantedDevice = device;
         if (shouldRun) {
             this.lastFailureAt = 0L;
         }
@@ -132,16 +129,12 @@ public final class VoiceEngine implements AutoCloseable {
             this.process.stop();
             return LocalEngine.Status.of(LocalEngine.Phase.STOPPED);
         }
-        if (this.process.isRunning() && !this.wantedDevice.equals(this.runningDevice)) {
-            this.process.stop();
-        }
         if (!this.process.isRunning()) {
             if (now - this.lastFailureAt < RETRY_AFTER_FAILURE_MILLIS) {
                 return this.status;
             }
             try {
-                this.process.start(List.of("--device", this.wantedDevice));
-                this.runningDevice = this.wantedDevice;
+                this.process.start(List.of());
                 return LocalEngine.Status.of(LocalEngine.Phase.STARTING);
             } catch (IOException exception) {
                 this.lastFailureAt = now;
@@ -167,13 +160,12 @@ public final class VoiceEngine implements AutoCloseable {
             Thread.currentThread().interrupt();
             return this.status;
         }
-        String device = text(answer, "device");
         return switch (text(answer, "state")) {
-            case "ready" -> new LocalEngine.Status(LocalEngine.Phase.READY, 100, "chatterbox", device, "");
+            case "ready" -> new LocalEngine.Status(LocalEngine.Phase.READY, 100, MODEL, "cpu", "");
             case "downloading" -> new LocalEngine.Status(LocalEngine.Phase.DOWNLOADING_MODEL,
-                    answer.has("progress") ? answer.get("progress").getAsInt() : -1, "chatterbox", "", "");
-            case "error" -> new LocalEngine.Status(LocalEngine.Phase.FAILED, -1, "chatterbox", "", text(answer, "error"));
-            default -> new LocalEngine.Status(LocalEngine.Phase.LOADING_MODEL, -1, "chatterbox", "", "");
+                    answer.has("progress") ? answer.get("progress").getAsInt() : -1, MODEL, "", "");
+            case "error" -> new LocalEngine.Status(LocalEngine.Phase.FAILED, -1, MODEL, "", text(answer, "error"));
+            default -> new LocalEngine.Status(LocalEngine.Phase.LOADING_MODEL, -1, MODEL, "", "");
         };
     }
 

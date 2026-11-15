@@ -1,11 +1,9 @@
 package org.sawiq.voicetranslate.client.ui;
 
-import java.util.Arrays;
 import java.util.List;
 import net.minecraft.network.chat.Component;
 import org.sawiq.voicetranslate.client.VoiceTranslateClient;
 import org.sawiq.voicetranslate.config.DubbingSettings;
-import org.sawiq.voicetranslate.config.RecognitionSettings;
 import org.sawiq.voicetranslate.dub.PiperLanguages;
 import org.sawiq.voicetranslate.engine.EngineComponent;
 import org.sawiq.voicetranslate.engine.PackageSet;
@@ -15,7 +13,7 @@ import org.sawiq.voicetranslate.language.Language;
 /**
  * Spoken translations: other players dubbed, and the player's own speech
  * sent translated. Both speak with the speech engine's light Piper voices;
- * copying players' own voices is an optional heavy engine below them.
+ * copying players' own voices is an optional engine below them.
  */
 final class VoiceTab implements SettingsTab {
     private final EnginePanel clonePanel;
@@ -70,15 +68,6 @@ final class VoiceTab implements SettingsTab {
                     context.apply().run();
                 }));
         this.clonePanel.build(list);
-        list.option(Component.translatable("voice-translate.settings.device"),
-                Component.translatable("voice-translate.settings.device.desc"),
-                Widgets.cycle(Component.translatable("voice-translate.settings.device"),
-                        Arrays.asList(RecognitionSettings.LOCAL_DEVICES), dubbing.device,
-                        device -> Component.translatable("voice-translate.settings.device." + device),
-                        device -> {
-                            dubbing.device = device;
-                            context.apply().run();
-                        }));
         list.text(Component.translatable("voice-translate.voice.explain", cloneDownloadSize()), UiPaint.DIM, 4);
     }
 

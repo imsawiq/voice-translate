@@ -1,9 +1,0 @@
-# Chatterbox pins its own heavy dependencies (transformers, diffusers, librosa) exactly.
-# setuptools stays below 81: the watermarker still imports pkg_resources.
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.6.0+cpu ; sys_platform != 'darwin'
-torch==2.6.0 ; sys_platform == 'darwin'
-torchaudio==2.6.0+cpu ; sys_platform != 'darwin'
-torchaudio==2.6.0 ; sys_platform == 'darwin'
-chatterbox-tts==0.1.7
-setuptools==80.9.0

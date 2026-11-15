@@ -11,7 +11,7 @@ import org.sawiq.voicetranslate.net.ServiceException;
  * any processor, about 60 MB per language, downloaded when first needed.
  * Not the speaker's own voice, but a male or female one to match theirs.
  */
-public final class PiperSynthesizer implements VoiceSynthesizer {
+public final class PiperSynthesizer {
     /** A touch quicker than Piper's natural pace, so a dub keeps up with the next sentence. */
     private static final double SPEED = 1.1;
     private static final int MAX_REMEMBERED_VOICES = 64;
@@ -29,20 +29,21 @@ public final class PiperSynthesizer implements VoiceSynthesizer {
         this.engineAddress = engineAddress;
     }
 
-    @Override
     public boolean speaks(String language) {
         return PiperLanguages.SUPPORTED.contains(language);
     }
 
-    /** @param voice whose voice to match in pitch, or null for a male voice */
-    @Override
+    /**
+     * @param voice whose voice to match in pitch, or null for a male voice
+     * @return 48 kHz mono PCM; empty when there is no voice for the language
+     */
     public short[] speak(String text, String language, VoiceSample voice) throws ServiceException {
         JsonObject body = new JsonObject();
         body.addProperty("text", text);
         body.addProperty("language", language);
         body.addProperty("voice", voice == null || isLow(voice) ? "male" : "female");
         body.addProperty("speed", SPEED);
-        return SpeakRequest.send(this.engineAddress.get(), body, "speech engine");
+        return EngineAudio.post(this.engineAddress.get(), "/speak", body, "speech engine");
     }
 
     private boolean isLow(VoiceSample voice) {

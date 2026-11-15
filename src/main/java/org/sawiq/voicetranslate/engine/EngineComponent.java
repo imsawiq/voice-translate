@@ -6,15 +6,17 @@ import java.util.List;
 /**
  * The two parts of the local engine, each with a Python environment of its
  * own: the light base, which recognises speech and speaks translations with
- * Piper voices, and the optional heavy one that copies players' voices.
+ * Piper voices, and the optional one that turns those voices into players'
+ * own.
  *
- * <p>They cannot share one: the voice copying model needs one exact PyTorch
- * release, and the CUDA libraries that brings clash with the ones Whisper
- * uses. Both live in the same engine folder and share uv and its Python.</p>
+ * <p>Voice copying needs PyTorch, over a gigabyte on disk even in its
+ * processor build, which the base does without; keeping it apart keeps the
+ * base light. Both live in the same engine folder and share uv and its
+ * Python.</p>
  */
 public enum EngineComponent {
     SPEECH("speech", ".venv", "vt_engine.py", "1.1.0", 1_430, 180),
-    VOICE("voice", ".venv-voice", "vt_voice.py", "1.0.0", 6_200, 1_600);
+    VOICE("voice", ".venv-voice", "vt_voice.py", "2.0.0", 450, 450);
 
     private final String id;
     private final String environment;
@@ -42,14 +44,14 @@ public enum EngineComponent {
         boolean isGpu = packages == PackageSet.CUDA;
         return switch (this) {
             case SPEECH -> isGpu ? "requirements-cuda.txt" : "requirements-cpu.txt";
-            case VOICE -> isGpu ? "requirements-voice-cuda.txt" : "requirements-voice-cpu.txt";
+            case VOICE -> "requirements-voice.txt";
         };
     }
 
     /**
-     * Extra uv arguments. The voice packages come partly from PyTorch's own
-     * index, which carries no upload dates, so they are pinned to exact
-     * versions instead of being cut off by date.
+     * Extra uv arguments. The voice copying packages come partly from
+     * PyTorch's own index, which carries no upload dates, so they are pinned
+     * to exact versions instead of being cut off by date.
      */
     List<String> installArguments() {
         return switch (this) {

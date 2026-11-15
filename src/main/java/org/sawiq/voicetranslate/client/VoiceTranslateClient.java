@@ -28,9 +28,9 @@ import org.sawiq.voicetranslate.engine.EngineInstaller;
 import org.sawiq.voicetranslate.engine.EnginePaths;
 import org.sawiq.voicetranslate.dub.DubPlayer;
 import org.sawiq.voicetranslate.dub.DubbingService;
-import org.sawiq.voicetranslate.dub.ChatterboxSynthesizer;
 import org.sawiq.voicetranslate.dub.DubVoices;
 import org.sawiq.voicetranslate.dub.PiperSynthesizer;
+import org.sawiq.voicetranslate.dub.VoiceCopier;
 import org.sawiq.voicetranslate.dub.OwnSpeechTranslator;
 import org.sawiq.voicetranslate.dub.VoiceSamples;
 import org.sawiq.voicetranslate.engine.LocalEngine;
@@ -99,7 +99,7 @@ public final class VoiceTranslateClient {
         this.intake = new VoiceIntake(this.pipeline, () -> this.segmenterSettings, this::isTranslated);
         this.voiceEngine = new VoiceEngine();
         DubVoices voices = new DubVoices(new PiperSynthesizer(this.engine::voiceAddress),
-                new ChatterboxSynthesizer(this.voiceEngine::address), this.voiceSamples,
+                new VoiceCopier(this.voiceEngine::address), this.voiceSamples,
                 () -> this.config.dubbing.cloneVoices);
         this.dubbing = new DubbingService(voices, this.dubPlayer, this::dubbingSettings,
                 failure -> this.pendingVoiceFailure = failure);
@@ -174,7 +174,7 @@ public final class VoiceTranslateClient {
         this.glossary.request(ServiceFactory.targetLanguage(current, this.lastGameLanguage), this::applySettings);
         this.services = ServiceFactory.create(current, this.engine, this.lastGameLanguage, this.glossary.current());
         this.pipeline.use(this.services);
-        this.voiceEngine.want(current.enabled && current.dubbing.needsVoiceEngine(), current.dubbing.device);
+        this.voiceEngine.want(current.enabled && current.dubbing.needsVoiceEngine());
         if (!current.dubbing.translateMySpeech) {
             this.ownSpeech.reset();
         }
