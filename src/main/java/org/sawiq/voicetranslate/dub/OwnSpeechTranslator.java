@@ -22,7 +22,8 @@ import org.sawiq.voicetranslate.translation.GlossaryTerm;
 import org.sawiq.voicetranslate.translation.TranslationRequest;
 
 /**
- * Sends the player's speech in another language, in their own voice.
+ * Sends the player's speech in another language: in a Piper voice that
+ * matches theirs, or in their own when voice copying is installed.
  *
  * <p>While they talk nothing is sent: the phrase is recorded. When they stop,
  * it is recognised, translated and spoken, and the spoken translation goes
@@ -54,7 +55,7 @@ public final class OwnSpeechTranslator implements AutoCloseable {
     }
 
     private final Supplier<PipelineServices> services;
-    private final VoiceSynthesizer synthesizer;
+    private final DubVoices voices;
     private final VoiceSamples samples;
     private final Supplier<UUID> self;
     private final Supplier<Settings> settings;
@@ -68,11 +69,11 @@ public final class OwnSpeechTranslator implements AutoCloseable {
     private short[] recording = new short[FRAME * 100];
     private int recordedFrames;
 
-    public OwnSpeechTranslator(Supplier<PipelineServices> services, VoiceSynthesizer synthesizer, VoiceSamples samples,
+    public OwnSpeechTranslator(Supplier<PipelineServices> services, DubVoices voices, VoiceSamples samples,
                                Supplier<UUID> self, Supplier<Settings> settings,
                                Consumer<Caption> onSpoken, Consumer<ServiceException> onFailure) {
         this.services = services;
-        this.synthesizer = synthesizer;
+        this.voices = voices;
         this.samples = samples;
         this.self = self;
         this.settings = settings;
@@ -176,7 +177,7 @@ public final class OwnSpeechTranslator implements AutoCloseable {
             }
             this.samples.offer(speaker, speech);
             String target = current.targetLanguage();
-            if (target.equals(transcript.language()) || !DubLanguages.isSpoken(target)) {
+            if (target.equals(transcript.language()) || !this.voices.speaks(target)) {
                 play(phrase48k, 1f);
                 return;
             }
@@ -187,7 +188,12 @@ public final class OwnSpeechTranslator implements AutoCloseable {
                     .translate(new TranslationRequest(text, transcript.language(), target, List.of(), glossary))
                     .text();
             for (String sentence : Sentences.split(translation)) {
-                play(this.synthesizer.speak(sentence, target, this.samples.sampleFor(speaker)), current.volume());
+                short[] spoken = this.voices.speak(sentence, target, speaker);
+                if (spoken.length == 0) {
+                    play(phrase48k, 1f);
+                    break;
+                }
+                play(spoken, current.volume());
             }
             this.onSpoken.accept(new Caption(-startedAt, speaker, "", text, translation, transcript.language(),
                     true, true, startedAt, System.currentTimeMillis()));

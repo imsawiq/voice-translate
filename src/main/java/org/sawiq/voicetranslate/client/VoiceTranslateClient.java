@@ -1,6 +1,7 @@
 package org.sawiq.voicetranslate.client;
 
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -27,10 +28,11 @@ import org.sawiq.voicetranslate.engine.EngineInstaller;
 import org.sawiq.voicetranslate.engine.EnginePaths;
 import org.sawiq.voicetranslate.dub.DubPlayer;
 import org.sawiq.voicetranslate.dub.DubbingService;
-import org.sawiq.voicetranslate.dub.LocalVoiceSynthesizer;
+import org.sawiq.voicetranslate.dub.ChatterboxSynthesizer;
+import org.sawiq.voicetranslate.dub.DubVoices;
+import org.sawiq.voicetranslate.dub.PiperSynthesizer;
 import org.sawiq.voicetranslate.dub.OwnSpeechTranslator;
 import org.sawiq.voicetranslate.dub.VoiceSamples;
-import org.sawiq.voicetranslate.dub.VoiceSynthesizer;
 import org.sawiq.voicetranslate.engine.LocalEngine;
 import org.sawiq.voicetranslate.engine.VoiceEngine;
 import org.sawiq.voicetranslate.language.SpeakerLanguages;
@@ -96,10 +98,12 @@ public final class VoiceTranslateClient {
                 this::onSentenceFinished, failure -> this.pendingFailure = failure);
         this.intake = new VoiceIntake(this.pipeline, () -> this.segmenterSettings, this::isTranslated);
         this.voiceEngine = new VoiceEngine();
-        VoiceSynthesizer synthesizer = new LocalVoiceSynthesizer(this.voiceEngine::address);
-        this.dubbing = new DubbingService(synthesizer, this.voiceSamples, this.dubPlayer, this::dubbingSettings,
+        DubVoices voices = new DubVoices(new PiperSynthesizer(this.engine::voiceAddress),
+                new ChatterboxSynthesizer(this.voiceEngine::address), this.voiceSamples,
+                () -> this.config.dubbing.cloneVoices);
+        this.dubbing = new DubbingService(voices, this.dubPlayer, this::dubbingSettings,
                 failure -> this.pendingVoiceFailure = failure);
-        this.ownSpeech = new OwnSpeechTranslator(() -> this.services, synthesizer, this.voiceSamples,
+        this.ownSpeech = new OwnSpeechTranslator(() -> this.services, voices, this.voiceSamples,
                 this.players::self, this::ownSpeechSettings, this.captions::publish,
                 failure -> this.pendingVoiceFailure = failure);
         VoiceBridge.connect(this.intake);
@@ -162,8 +166,11 @@ public final class VoiceTranslateClient {
                 current.display.showDrafts ? SegmenterSettings.DEFAULT.draftIntervalMillis() : 0,
                 current.recognition.sensitivityDb);
         this.mutedPlayers = Set.copyOf(current.mutedPlayers);
-        boolean wantsLocal = current.enabled && current.recognition.service == RecognitionService.LOCAL;
-        this.engine.want(wantsLocal, current.recognition.localModel, current.recognition.localDevice);
+        boolean recognisesLocally = current.recognition.service == RecognitionService.LOCAL;
+        boolean speaks = current.dubbing.speaksAnything();
+        this.engine.want(current.enabled && (recognisesLocally || speaks),
+                recognisesLocally ? current.recognition.localModel : LocalEngine.NO_MODEL, current.recognition.localDevice);
+        this.engine.wantVoices(spokenLanguages(current));
         this.glossary.request(ServiceFactory.targetLanguage(current, this.lastGameLanguage), this::applySettings);
         this.services = ServiceFactory.create(current, this.engine, this.lastGameLanguage, this.glossary.current());
         this.pipeline.use(this.services);
@@ -268,7 +275,7 @@ public final class VoiceTranslateClient {
      */
     private double originalGain(UUID speaker) {
         TranslateConfig current = this.config;
-        if (!current.enabled || !current.dubbing.dubOthers || this.voiceEngine.address() == null) {
+        if (!current.enabled || !current.dubbing.dubOthers || this.engine.voiceAddress() == null) {
             return 1.0;
         }
         Long translatedAt = this.lastTranslatedAt.get(speaker);
@@ -278,8 +285,19 @@ public final class VoiceTranslateClient {
 
     private DubbingService.Settings dubbingSettings() {
         TranslateConfig current = this.config;
-        return new DubbingService.Settings(current.enabled && current.dubbing.dubOthers,
-                current.dubbing.cloneVoices, current.dubbing.dubVolume / 100f);
+        return new DubbingService.Settings(current.enabled && current.dubbing.dubOthers, current.dubbing.dubVolume / 100f);
+    }
+
+    /** The languages something will be spoken in, whose voices are worth having on disk before they are needed. */
+    private Set<String> spokenLanguages(TranslateConfig current) {
+        Set<String> languages = new HashSet<>();
+        if (current.dubbing.dubOthers) {
+            languages.add(ServiceFactory.targetLanguage(current, this.lastGameLanguage));
+        }
+        if (current.dubbing.translateMySpeech) {
+            languages.add(current.dubbing.mySpeechLanguage);
+        }
+        return languages;
     }
 
     private OwnSpeechTranslator.Settings ownSpeechSettings() {

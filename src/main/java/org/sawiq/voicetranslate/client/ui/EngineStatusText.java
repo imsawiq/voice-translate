@@ -36,7 +36,9 @@ public final class EngineStatusText {
             case DOWNLOADING_MODEL -> Component.translatable(key(component, "downloading"), status.model(),
                     status.progress() >= 0 ? status.progress() + "%" : "...");
             case LOADING_MODEL -> Component.translatable(key(component, "loading"), status.model());
-            case READY -> Component.translatable(key(component, "ready"), status.model(),
+            case READY -> LocalEngine.NO_MODEL.equals(status.model())
+                    ? Component.translatable("voice-translate.engine.ready_voices")
+                    : Component.translatable(key(component, "ready"), status.model(),
                     Component.translatable("cuda".equals(status.device())
                             ? "voice-translate.engine.device.gpu" : "voice-translate.engine.device.cpu"));
             case FAILED -> Component.translatable(key(component, "failed"), status.detail());

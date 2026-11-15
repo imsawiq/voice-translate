@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -13,7 +14,7 @@ import java.util.stream.Stream;
 import org.sawiq.voicetranslate.VoiceTranslate;
 
 /**
- * The Whisper models on disk, read straight from the Hugging Face cache the
+ * The speech models on disk, read straight from the Hugging Face cache the
  * engine downloads into, so the settings can show which models are already
  * there and free the space of the ones not in use, whether or not the engine
  * is running.
@@ -21,12 +22,15 @@ import org.sawiq.voicetranslate.VoiceTranslate;
 public final class ModelCache {
     /** The same repositories the engine's MODEL_REPOS names. */
     private static final Map<String, String> REPOSITORIES = Map.of(
+            "parakeet", "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+            "tiny", "Systran/faster-whisper-tiny",
             "small", "Systran/faster-whisper-small",
             "medium", "Systran/faster-whisper-medium",
             "large-v3-turbo", "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
             "large-v3", "Systran/faster-whisper-large-v3");
     /** Download sizes, for telling the player what a model costs before it is picked. */
     private static final Map<String, Integer> DOWNLOAD_MEGABYTES = Map.of(
+            "parakeet", 745,
             "small", 484,
             "medium", 1_530,
             "large-v3-turbo", 1_620,
@@ -60,8 +64,9 @@ public final class ModelCache {
             return false;
         }
         try (Stream<Path> versions = Files.list(snapshots)) {
-            return versions.anyMatch(version -> Files.exists(version.resolve("model.bin"))
-                    && Files.exists(version.resolve("tokenizer.json")));
+            return versions.anyMatch(version -> "parakeet".equals(model)
+                    ? Files.exists(version.resolve("encoder.int8.onnx")) && Files.exists(version.resolve("tokens.txt"))
+                    : Files.exists(version.resolve("model.bin")) && Files.exists(version.resolve("tokenizer.json")));
         } catch (IOException exception) {
             return false;
         }
@@ -89,10 +94,11 @@ public final class ModelCache {
      * @return megabytes freed
      */
     public static long deleteAllExcept(Set<String> kept) {
+        Set<String> needed = withCompanions(kept);
         long freed = 0;
         for (String model : REPOSITORIES.keySet()) {
             Path folder = folder(model);
-            if (kept.contains(model) || !Files.exists(folder)) {
+            if (needed.contains(model) || !Files.exists(folder)) {
                 continue;
             }
             long size = megabytesOnDisk(folder);
@@ -109,13 +115,24 @@ public final class ModelCache {
 
     /** Any model other than these taking space, finished or not. */
     public static long megabytesExcept(Set<String> kept) {
+        Set<String> needed = withCompanions(kept);
         long total = 0;
         for (Map.Entry<String, Entry> model : scan().entrySet()) {
-            if (!kept.contains(model.getKey())) {
+            if (!needed.contains(model.getKey())) {
                 total += model.getValue().megabytes();
             }
         }
         return total;
+    }
+
+    /** Parakeet cannot tell languages apart on its own; Whisper tiny does that for it. */
+    private static Set<String> withCompanions(Set<String> models) {
+        if (!models.contains("parakeet")) {
+            return models;
+        }
+        Set<String> needed = new HashSet<>(models);
+        needed.add("tiny");
+        return needed;
     }
 
     private static Map<String, Entry> scan() {

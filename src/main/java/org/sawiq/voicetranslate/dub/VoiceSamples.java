@@ -66,6 +66,12 @@ public final class VoiceSamples {
         return new VoiceSample(speaker + "#" + current.version(), current.samples());
     }
 
+    /** Whatever there is of this speaker, too little to copy but enough to hear how high they speak; or null. */
+    public synchronized VoiceSample partialSampleFor(UUID speaker) {
+        Collected current = this.collected.get(speaker);
+        return current == null ? null : new VoiceSample(speaker + "#" + current.version(), current.samples());
+    }
+
     public synchronized void clear() {
         this.collected.clear();
     }

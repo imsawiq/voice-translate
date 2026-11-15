@@ -2,8 +2,11 @@ package org.sawiq.voicetranslate.config;
 
 /** Speech recognition settings. Mutable for Gson and the settings screen. */
 public final class RecognitionSettings {
-    /** Model sizes the local engine offers, smallest first; "auto" picks by hardware. */
-    public static final String[] LOCAL_MODELS = {"auto", "small", "medium", "large-v3-turbo", "large-v3"};
+    /**
+     * Models the local engine offers: Parakeet, which "auto" stands for, then
+     * Whisper sizes smallest first, for languages Parakeet does not know.
+     */
+    public static final String[] LOCAL_MODELS = {"auto", "parakeet", "small", "medium", "large-v3-turbo", "large-v3"};
     public static final String[] LOCAL_DEVICES = {"auto", "cuda", "cpu"};
 
     public RecognitionService service = RecognitionService.LOCAL;

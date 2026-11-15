@@ -1,5 +1,6 @@
 package org.sawiq.voicetranslate.engine;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -10,6 +11,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -18,7 +20,8 @@ import org.sawiq.voicetranslate.net.Http;
 
 /**
  * Keeps the local engine in the state the settings ask for: running with the
- * chosen model while local recognition is in use, stopped otherwise.
+ * chosen model while local recognition is in use, with no model while only
+ * its Piper voices are needed, stopped otherwise.
  *
  * <p>A background thread looks at the engine once a second and compares what
  * it reports it is working on with what the settings want. The engine's own
@@ -61,6 +64,10 @@ public final class LocalEngine implements AutoCloseable {
                           String error, int progress) {
     }
 
+    public static final String PARAKEET = "parakeet";
+    /** Runs the engine without a recognition model, for its voices alone. */
+    public static final String NO_MODEL = "none";
+
     private static final Duration STATUS_TIMEOUT = Duration.ofSeconds(2);
     private static final long START_GRACE_MILLIS = 60_000L;
     private static final long RETRY_AFTER_FAILURE_MILLIS = 30_000L;
@@ -81,6 +88,9 @@ public final class LocalEngine implements AutoCloseable {
     private volatile long lastFailureAt;
     private volatile long lastDiskCheck;
     private volatile long lastModelErrorAt;
+    private volatile Set<String> wantedVoices = Set.of();
+    private Set<String> preparedVoices = Set.of();
+    private long voicesPreparedForStart;
 
     public LocalEngine() {
         this.poller = Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -113,23 +123,41 @@ public final class LocalEngine implements AutoCloseable {
         }
     }
 
+    /**
+     * The languages whose voices should be on disk, so the first dubbed
+     * sentence is not lost to a download. Cheap; call on every settings change.
+     */
+    public void wantVoices(Set<String> languages) {
+        this.wantedVoices = Set.copyOf(languages);
+    }
+
     /** The engine's address while it can transcribe, otherwise null. */
     public String address() {
         return this.status.phase() == Phase.READY ? "http://127.0.0.1:" + this.process.port() : null;
     }
 
-    /** The model "auto" stands for on this computer. */
+    /** The engine's address while it answers at all: its voices work while a model is still loading. */
+    public String voiceAddress() {
+        return switch (this.status.phase()) {
+            case READY, LOADING_MODEL, DOWNLOADING_MODEL -> "http://127.0.0.1:" + this.process.port();
+            default -> null;
+        };
+    }
+
+    /** The model "auto" stands for: Parakeet, quick and accurate on any processor. */
     public String resolveModel(String model) {
-        if (!"auto".equals(model)) {
-            return model;
-        }
-        PackageSet packages = this.installer.packageSet();
-        return packages == null ? PackageSet.CPU.recommendedModel() : packages.recommendedModel();
+        return "auto".equals(model) ? PARAKEET : model;
     }
 
     /** The model the settings currently ask for, with "auto" resolved. */
     public String wantedModel() {
         return resolveModel(this.wantedModel);
+    }
+
+    /** Adds NVIDIA's libraries for Whisper; the engine starts again with them once they are in. */
+    public void addGpuLibraries() {
+        this.process.stop();
+        this.installer.addGpuLibraries();
     }
 
     public void stopForUninstall() {
@@ -223,6 +251,7 @@ public final class LocalEngine implements AutoCloseable {
             return isStillStarting ? new Status(Phase.STARTING, -1, resolveModel(this.wantedModel), "", "") : this.status;
         }
 
+        prepareVoices();
         String model = resolveModel(this.wantedModel);
         boolean isOnWantedChoice = model.equals(report.target()) && this.wantedDevice.equals(report.targetDevice());
         boolean hasChoiceSettled = now - this.choiceChangedAt >= CHOICE_SETTLE_MILLIS;
@@ -272,22 +301,46 @@ public final class LocalEngine implements AutoCloseable {
         }
     }
 
+    /** Asks once per engine run and per change for the wanted voices to be downloaded. */
+    private void prepareVoices() {
+        Set<String> wanted = this.wantedVoices;
+        long start = this.process.startedAt();
+        if (wanted.isEmpty() || (wanted.equals(this.preparedVoices) && start == this.voicesPreparedForStart)) {
+            return;
+        }
+        JsonArray languages = new JsonArray();
+        wanted.forEach(languages::add);
+        JsonObject body = new JsonObject();
+        body.add("languages", languages);
+        if (post("/prepare", body)) {
+            this.preparedVoices = wanted;
+            this.voicesPreparedForStart = start;
+        }
+    }
+
     /** A refusal (the engine is busy) needs no handling: the next look sees it and steers again. */
     private void requestModel(String model, String device) {
         JsonObject body = new JsonObject();
         body.addProperty("model", model);
         body.addProperty("device", device);
-        HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + this.process.port() + "/load"))
+        post("/load", body);
+    }
+
+    private boolean post(String path, JsonObject body) {
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + this.process.port() + path))
                 .timeout(STATUS_TIMEOUT)
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                 .build();
         try {
             Http.LOCAL.send(request, HttpResponse.BodyHandlers.discarding());
+            return true;
         } catch (IOException exception) {
-            VoiceTranslate.LOGGER.warn("Could not ask the speech engine to load {}: {}", model, exception.getMessage());
+            VoiceTranslate.LOGGER.warn("The speech engine did not take {}: {}", path, exception.getMessage());
+            return false;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
+            return false;
         }
     }
 

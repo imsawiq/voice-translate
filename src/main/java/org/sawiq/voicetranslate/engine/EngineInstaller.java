@@ -69,15 +69,17 @@ public final class EngineInstaller {
     private final EngineComponent component;
     private volatile Progress progress;
     private volatile Progress outcome;
-    private volatile PackageSet packageSet;
+    /** What this computer could use, once nvidia-smi has been asked. */
+    private volatile PackageSet hardware;
     private volatile Process child;
+    private volatile PackageSet requested;
     private volatile boolean isCancelled;
 
     public EngineInstaller(EngineComponent component) {
         this.component = component;
         this.progress = idle();
         if (EnginePaths.isSupported()) {
-            Thread detection = new Thread(() -> this.packageSet = PackageSet.detect(), "Voice Translate GPU detection");
+            Thread detection = new Thread(() -> this.hardware = PackageSet.detect(), "Voice Translate GPU detection");
             detection.setDaemon(true);
             detection.start();
         }
@@ -102,10 +104,17 @@ public final class EngineInstaller {
         return this.progress.state() == State.INSTALLED;
     }
 
-    /** The package set for this computer, or null while the graphics card is still being looked at. */
+    /**
+     * The package set installed, or the one an install would choose now; null
+     * while the graphics card is still being looked at.
+     */
     public PackageSet packageSet() {
-        PackageSet installed = installedPackageSet().orElse(null);
-        return installed != null ? installed : this.packageSet;
+        return installedPackageSet().orElseGet(this::defaultPackages);
+    }
+
+    /** Whether there is an NVIDIA card that could run Whisper but its libraries are not installed. */
+    public boolean canAddGpuLibraries() {
+        return isInstalled() && this.hardware == PackageSet.CUDA && packageSet() == PackageSet.CPU;
     }
 
     /** The install that just ended, once. */
@@ -115,10 +124,21 @@ public final class EngineInstaller {
         return ended;
     }
 
-    public synchronized void install() {
+    /** Installs, or brings an older install up to date, keeping the package set it had. */
+    public void install() {
+        install(null);
+    }
+
+    /** Adds NVIDIA's libraries to the speech engine, for Whisper on the graphics card. */
+    public void addGpuLibraries() {
+        install(PackageSet.CUDA);
+    }
+
+    private synchronized void install(PackageSet requested) {
         if (this.progress.state() == State.INSTALLING || !EnginePaths.isSupported()) {
             return;
         }
+        this.requested = requested;
         try {
             Files.createDirectories(EnginePaths.root());
             Files.writeString(this.component.pendingInstallMarker(), this.component.version(), StandardCharsets.UTF_8);
@@ -201,8 +221,13 @@ public final class EngineInstaller {
 
             String environment = EnginePaths.engineDirectory().relativize(this.component.environmentDirectory()).toString();
             runUv("python", List.of("venv", "--python", EnginePaths.PYTHON_VERSION, "--allow-existing", environment));
-            PackageSet packages = this.packageSet != null ? this.packageSet : PackageSet.detect();
-            this.packageSet = packages;
+            PackageSet packages = this.requested != null ? this.requested : installedPackageSet().orElse(null);
+            if (packages == null) {
+                if (this.hardware == null) {
+                    this.hardware = PackageSet.detect();
+                }
+                packages = defaultPackages();
+            }
             List<String> arguments = new ArrayList<>(List.of("pip", "install",
                     "--python", this.component.pythonForInstall().toString()));
             arguments.addAll(this.component.installArguments());
@@ -328,6 +353,17 @@ public final class EngineInstaller {
         }
         boolean isInstalled = installedProperty("version").isPresent() && Files.isRegularFile(this.component.python());
         return new Progress(isInstalled ? State.INSTALLED : State.NOT_INSTALLED, "", -1, "");
+    }
+
+    /**
+     * The light set for the base engine everywhere; voice copying takes the
+     * graphics card when there is one, as it is far too slow without.
+     */
+    private PackageSet defaultPackages() {
+        if (this.component == EngineComponent.SPEECH) {
+            return PackageSet.CPU;
+        }
+        return this.hardware;
     }
 
     private Optional<PackageSet> installedPackageSet() {

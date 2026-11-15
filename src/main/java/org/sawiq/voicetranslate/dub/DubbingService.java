@@ -11,10 +11,9 @@ import org.sawiq.voicetranslate.caption.Caption;
 import org.sawiq.voicetranslate.net.ServiceException;
 
 /**
- * Speaks other players' translated sentences in their own voices.
+ * Speaks other players' translated sentences from where they stand.
  *
- * <p>One sentence at a time: the voice model uses the whole graphics card,
- * and two at once would only make both late. When it falls behind, the
+ * <p>One sentence at a time, in order. When it falls behind, the
  * oldest waiting sentence is dropped; a translation spoken half a minute
  * after the fact helps nobody.</p>
  */
@@ -23,24 +22,21 @@ public final class DubbingService implements AutoCloseable {
     private static final long STALE_AFTER_MILLIS = 15_000L;
 
     /**
-     * @param isEnabled    whether dubbing is on
-     * @param cloneVoices  whether to copy the speaker's voice or use the engine's own
-     * @param volume       0..2, the dub's loudness
+     * @param isEnabled whether dubbing is on
+     * @param volume    0..2, the dub's loudness
      */
-    public record Settings(boolean isEnabled, boolean cloneVoices, float volume) {
+    public record Settings(boolean isEnabled, float volume) {
     }
 
-    private final VoiceSynthesizer synthesizer;
-    private final VoiceSamples samples;
+    private final DubVoices voices;
     private final DubPlayer player;
     private final Supplier<Settings> settings;
     private final Consumer<ServiceException> onFailure;
     private final ThreadPoolExecutor worker;
 
-    public DubbingService(VoiceSynthesizer synthesizer, VoiceSamples samples, DubPlayer player,
-                          Supplier<Settings> settings, Consumer<ServiceException> onFailure) {
-        this.synthesizer = synthesizer;
-        this.samples = samples;
+    public DubbingService(DubVoices voices, DubPlayer player, Supplier<Settings> settings,
+                          Consumer<ServiceException> onFailure) {
+        this.voices = voices;
         this.player = player;
         this.settings = settings;
         this.onFailure = onFailure;
@@ -61,7 +57,7 @@ public final class DubbingService implements AutoCloseable {
      */
     public void onSentence(Caption caption, String language) {
         Settings current = this.settings.get();
-        if (!current.isEnabled() || !caption.isTranslated() || !DubLanguages.isSpoken(language)
+        if (!current.isEnabled() || !caption.isTranslated() || !this.voices.speaks(language)
                 || !this.player.hasOutput()) {
             return;
         }
@@ -74,11 +70,12 @@ public final class DubbingService implements AutoCloseable {
             return;
         }
         UUID speaker = caption.speakerId();
-        VoiceSample voice = current.cloneVoices() ? this.samples.sampleFor(speaker) : null;
         try {
             for (String sentence : Sentences.split(caption.translation())) {
-                short[] pcm = this.synthesizer.speak(sentence, language, voice);
-                this.player.enqueue(speaker, pcm, current.volume());
+                short[] pcm = this.voices.speak(sentence, language, speaker);
+                if (pcm.length > 0) {
+                    this.player.enqueue(speaker, pcm, current.volume());
+                }
             }
         } catch (ServiceException exception) {
             this.onFailure.accept(exception);

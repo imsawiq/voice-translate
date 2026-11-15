@@ -5,14 +5,15 @@ import java.util.List;
 
 /**
  * The two parts of the local engine, each with a Python environment of its
- * own: speech recognition, and the voice that speaks translations.
+ * own: the light base, which recognises speech and speaks translations with
+ * Piper voices, and the optional heavy one that copies players' voices.
  *
- * <p>They cannot share one: the voice model needs one exact PyTorch release,
- * and the CUDA libraries that brings clash with the ones Whisper uses. Both
- * live in the same engine folder and share uv and its Python.</p>
+ * <p>They cannot share one: the voice copying model needs one exact PyTorch
+ * release, and the CUDA libraries that brings clash with the ones Whisper
+ * uses. Both live in the same engine folder and share uv and its Python.</p>
  */
 public enum EngineComponent {
-    SPEECH("speech", ".venv", "vt_engine.py", "1.0.0", 1_400, 150),
+    SPEECH("speech", ".venv", "vt_engine.py", "1.1.0", 1_430, 180),
     VOICE("voice", ".venv-voice", "vt_voice.py", "1.0.0", 6_200, 1_600);
 
     private final String id;

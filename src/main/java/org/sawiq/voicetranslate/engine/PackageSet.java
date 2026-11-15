@@ -9,13 +9,14 @@ import java.util.concurrent.TimeUnit;
 /**
  * Which packages the engine needs on this computer.
  *
- * <p>With an NVIDIA card Whisper runs on CUDA, which needs NVIDIA's cuBLAS
- * and cuDNN next to it, about 1.2 GB more. Everything else runs on the
- * processor, which works everywhere but is a few times slower.</p>
+ * <p>The processor set is what everyone gets: Parakeet and the Piper voices
+ * run on any processor in real time. NVIDIA's cuBLAS and cuDNN, about
+ * 1.2 GB more, only let Whisper run on an NVIDIA card, and are added when
+ * the player asks for that.</p>
  */
 public enum PackageSet {
-    CUDA("requirements-cuda.txt", 1_400, "large-v3-turbo"),
-    CPU("requirements-cpu.txt", 150, "small");
+    CUDA("requirements-cuda.txt", 1_430),
+    CPU("requirements-cpu.txt", 180);
 
     private static final long NVIDIA_SMI_TIMEOUT_SECONDS = 10L;
     /** CTranslate2's CUDA build needs a Maxwell card or newer. */
@@ -23,12 +24,10 @@ public enum PackageSet {
 
     private final String requirementsFile;
     private final int downloadMegabytes;
-    private final String recommendedModel;
 
-    PackageSet(String requirementsFile, int downloadMegabytes, String recommendedModel) {
+    PackageSet(String requirementsFile, int downloadMegabytes) {
         this.requirementsFile = requirementsFile;
         this.downloadMegabytes = downloadMegabytes;
-        this.recommendedModel = recommendedModel;
     }
 
     public String requirementsFile() {
@@ -40,12 +39,7 @@ public enum PackageSet {
         return this.downloadMegabytes;
     }
 
-    /** The model "auto" means here: the best one this hardware runs in real time. */
-    public String recommendedModel() {
-        return this.recommendedModel;
-    }
-
-    /** Asks nvidia-smi for the first card; the processor build when there is none or it cannot be asked. */
+    /** Asks nvidia-smi for the first card: CUDA when it can run CUDA, the processor set otherwise. */
     public static PackageSet detect() {
         if (EnginePaths.isMac()) {
             return CPU;

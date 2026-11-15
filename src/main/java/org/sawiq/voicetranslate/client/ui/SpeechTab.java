@@ -92,6 +92,15 @@ final class SpeechTab implements SettingsTab {
                             recognition.localDevice = device;
                             context.apply().run();
                         }));
+        if (engine.installer().canAddGpuLibraries()) {
+            list.text(Component.translatable("voice-translate.engine.gpu_libraries"), UiPaint.DIM, 3);
+            list.row(Button.builder(Component.translatable("voice-translate.engine.gpu_libraries.add"),
+                            pressed -> {
+                                engine.addGpuLibraries();
+                                context.rebuild().run();
+                            })
+                    .bounds(0, 0, SettingsList.CONTROL_WIDTH, SettingsList.WIDGET_HEIGHT).build());
+        }
         list.text(Component.translatable("voice-translate.engine.explain", downloadSize(engine)), UiPaint.DIM, 3);
         buildStorage(list, engine);
     }
@@ -212,7 +221,7 @@ final class SpeechTab implements SettingsTab {
 
     private static int downloadSize(LocalEngine engine) {
         PackageSet packages = engine.installer().packageSet();
-        return (packages == null ? PackageSet.CUDA : packages).downloadMegabytes()
-                + ("large-v3-turbo".equals(engine.resolveModel("auto")) ? 1_600 : 480);
+        return (packages == null ? PackageSet.CPU : packages).downloadMegabytes()
+                + ModelCache.downloadMegabytes(engine.wantedModel());
     }
 }
