@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "${id}",
+  "version": "${version}",
+  "name": "${name}",
+  "description": "${description}",
+  "authors": [
+    "sawiq_"
+  ],
+  "contact": {
+    "sources": "https://github.com/imsawiq/voice-translate",
+    "issues": "https://github.com/imsawiq/voice-translate/issues"
+  },
+  "license": "CC-BY-NC-SA-4.0",
+  "icon": "assets/voice-translate/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "org.sawiq.voicetranslate.loader.VoiceTranslateFabric"
+    ],
+    "voicechat": [
+      "org.sawiq.voicetranslate.voice.svc.SimpleVoiceChatPlugin"
+    ]
+  },
+  "mixins": [
+    "voice-translate.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${fabric_loader}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft}"
+  },
+  "suggests": {
+    "voicechat": "${voicechat}",
+    "plasmovoice": "${plasmovoice}"
+  }
+}

@@ -1,0 +1,45 @@
+license = "CC-BY-NC-SA-4.0"
+modLoader = "javafml"
+loaderVersion = "[1,)"
+issueTrackerURL = "https://github.com/imsawiq/voice-translate/issues"
+
+[[mods]]
+modId = "${id}"
+displayName = "${name}"
+version = "${version}"
+authors = "sawiq_"
+description = "${description}"
+${icon_key} = "assets/voice-translate/icon.png"
+displayURL = "https://github.com/imsawiq/voice-translate"
+
+[[mixins]]
+config = "voice-translate.mixins.json"
+
+[[dependencies.${id}]]
+modId = "neoforge"
+type = "required"
+versionRange = "[1,)"
+ordering = "NONE"
+side = "CLIENT"
+
+[[dependencies.${id}]]
+modId = "minecraft"
+type = "required"
+versionRange = "${minecraft}"
+ordering = "NONE"
+side = "CLIENT"
+
+# Either voice mod works; the translator hooks into whichever is installed.
+[[dependencies.${id}]]
+modId = "voicechat"
+type = "optional"
+versionRange = "${voicechat}"
+ordering = "AFTER"
+side = "CLIENT"
+
+[[dependencies.${id}]]
+modId = "plasmovoice"
+type = "optional"
+versionRange = "${plasmovoice}"
+ordering = "AFTER"
+side = "CLIENT"

@@ -1,0 +1,2 @@
+Model code from https://github.com/myshell-ai/OpenVoice at 74a1d147, unchanged, under the MIT licence in LICENSE.
+Only the tone colour converter is used, with the weights from huggingface.co/myshell-ai/OpenVoiceV2.
